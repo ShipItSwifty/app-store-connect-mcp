@@ -43,12 +43,8 @@ jobs:
       - name: Swift version
         run: swift --version
 
-      - name: Cache SPM dependencies
-        uses: actions/cache@v4
-        with:
-          path: .build/checkouts
-          key: macos-spm-${{ hashFiles('Package.resolved') }}
-          restore-keys: macos-spm-
+      - name: Resolve dependencies
+        run: swift package resolve
 
       - name: Build
         run: swift build
@@ -80,12 +76,8 @@ jobs:
       - name: Swift version
         run: swift --version
 
-      - name: Cache SPM dependencies
-        uses: actions/cache@v4
-        with:
-          path: .build/checkouts
-          key: linux-spm-${{ hashFiles('Package.resolved') }}
-          restore-keys: linux-spm-
+      - name: Resolve dependencies
+        run: swift package resolve
 
       - name: Build (AppStoreConnectKit + MCP server)
         run: |

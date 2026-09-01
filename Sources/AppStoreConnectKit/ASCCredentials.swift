@@ -1,5 +1,9 @@
 import Foundation
 
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+
 /// Typed App Store Connect API credentials.
 ///
 /// This is the type-safe seam that replaces passing an ad-hoc configuration bag
