@@ -1,0 +1,96 @@
+name: Build & Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  lint:
+    name: Format Lint
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Swift version
+        run: swift --version
+
+      - name: swift-format lint (strict)
+        run: |
+          xcrun swift-format lint --recursive --strict \
+            --configuration .swift-format \
+            Sources Tests
+
+  macos:
+    name: Build & Test (macOS)
+    needs: lint
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Swift version
+        run: swift --version
+
+      - name: Cache SPM dependencies
+        uses: actions/cache@v4
+        with:
+          path: .build/checkouts
+          key: macos-spm-${{ hashFiles('Package.resolved') }}
+          restore-keys: macos-spm-
+
+      - name: Build
+        run: swift build
+
+      - name: Test
+        run: swift test --enable-code-coverage
+
+      - name: Smoke test MCP binary
+        run: |
+          swift build --product app-store-connect-mcp
+          # No credentials: the process should start its stdio loop, so we just
+          # confirm the binary launches and does not exit immediately.
+          BIN=$(swift build --product app-store-connect-mcp --show-bin-path)/app-store-connect-mcp
+          "$BIN" < /dev/null & PID=$!
+          sleep 2
+          kill "$PID"
+
+  linux:
+    name: Build & Test (Linux)
+    needs: lint
+    runs-on: ubuntu-24.04
+    container:
+      image: swift:6.1-noble
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Swift version
+        run: swift --version
+
+      - name: Cache SPM dependencies
+        uses: actions/cache@v4
+        with:
+          path: .build/checkouts
+          key: linux-spm-${{ hashFiles('Package.resolved') }}
+          restore-keys: linux-spm-
+
+      - name: Build (AppStoreConnectKit + MCP server)
+        run: |
+          swift build --product AppStoreConnectKit
+          swift build --product app-store-connect-mcp
+
+      - name: Test
+        run: swift test --enable-code-coverage

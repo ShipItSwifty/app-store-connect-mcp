@@ -1,0 +1,160 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Existing release tag to rebuild and publish
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  RELEASE_VERSION: ${{ inputs.version || github.ref_name }}
+
+concurrency:
+  group: release-${{ inputs.version || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  build-macos:
+    name: Build macOS Universal Binary
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ env.RELEASE_VERSION }}
+
+      - name: Stamp version from tag
+        run: |
+          sed -i.bak 's/static let current = "[^"]*"/static let current = "'"${RELEASE_VERSION}"'"/' \
+            Sources/AppStoreConnectMCPServer/Entry.swift
+          rm -f Sources/AppStoreConnectMCPServer/Entry.swift.bak
+          grep -q "static let current = \"${RELEASE_VERSION}\"" Sources/AppStoreConnectMCPServer/Entry.swift
+
+      - name: Swift version
+        run: swift --version
+
+      - name: Test
+        run: swift test
+
+      - name: Build arm64
+        run: swift build -c release --product app-store-connect-mcp --arch arm64 --disable-sandbox
+
+      - name: Build x86_64
+        run: swift build -c release --product app-store-connect-mcp --arch x86_64 --disable-sandbox
+
+      - name: Create universal binary
+        run: |
+          lipo -create -output app-store-connect-mcp \
+            .build/arm64-apple-macosx/release/app-store-connect-mcp \
+            .build/x86_64-apple-macosx/release/app-store-connect-mcp
+          lipo -info app-store-connect-mcp
+
+      - name: Package tarball
+        run: |
+          tar -czf "app-store-connect-mcp-${RELEASE_VERSION}-macos-universal.tar.gz" app-store-connect-mcp
+          echo "TARBALL=app-store-connect-mcp-${RELEASE_VERSION}-macos-universal.tar.gz" >> "$GITHUB_ENV"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-universal
+          path: ${{ env.TARBALL }}
+          retention-days: 7
+
+  build-linux:
+    name: Build Linux Binary
+    runs-on: ubuntu-24.04
+    container:
+      image: swift:6.1-noble
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ env.RELEASE_VERSION }}
+
+      - name: Stamp version from tag
+        run: |
+          sed -i.bak 's/static let current = "[^"]*"/static let current = "'"${RELEASE_VERSION}"'"/' \
+            Sources/AppStoreConnectMCPServer/Entry.swift
+          rm -f Sources/AppStoreConnectMCPServer/Entry.swift.bak
+          grep -q "static let current = \"${RELEASE_VERSION}\"" Sources/AppStoreConnectMCPServer/Entry.swift
+
+      - name: Swift version
+        run: swift --version
+
+      - name: Build static binary
+        run: swift build -c release --product app-store-connect-mcp --static-swift-stdlib
+
+      - name: Package tarball
+        run: |
+          cp .build/release/app-store-connect-mcp app-store-connect-mcp
+          tar -czf "app-store-connect-mcp-${RELEASE_VERSION}-linux-x86_64.tar.gz" app-store-connect-mcp
+          echo "TARBALL=app-store-connect-mcp-${RELEASE_VERSION}-linux-x86_64.tar.gz" >> "$GITHUB_ENV"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-x86_64
+          path: ${{ env.TARBALL }}
+          retention-days: 7
+
+  release:
+    name: Create GitHub Release
+    needs: [build-macos, build-linux]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ env.RELEASE_VERSION }}
+
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-universal
+
+      - name: Download Linux artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-x86_64
+
+      - name: Generate checksums
+        run: |
+          sha256sum app-store-connect-mcp-*.tar.gz \
+            > "app-store-connect-mcp-${RELEASE_VERSION}-checksums.txt"
+
+      - name: Attest release archives
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: 'app-store-connect-mcp-*.tar.gz'
+
+      - name: Generate release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --method POST \
+            "/repos/${{ github.repository }}/releases/generate-notes" \
+            -f tag_name="${RELEASE_VERSION}" \
+            -f target_commitish=main \
+            --jq '.body' > release_notes.md
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_VERSION }}
+          body_path: release_notes.md
+          files: |
+            app-store-connect-mcp-*.tar.gz
+            app-store-connect-mcp-*-checksums.txt
