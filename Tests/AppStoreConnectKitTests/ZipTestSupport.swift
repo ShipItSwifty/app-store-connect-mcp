@@ -1,9 +1,9 @@
 import Foundation
 import Testing
 
-/// Builds a real ZIP with `/usr/bin/zip` (present on every macOS runner) so tests
-/// exercise `ZipArchive` against genuine DEFLATE streams and central-directory
-/// layout rather than a hand-rolled fixture.
+/// Builds a real ZIP with `/usr/bin/zip` (present on macOS runners; installed via
+/// apt on the Linux CI container) so tests exercise `ZipArchive` against genuine
+/// DEFLATE streams and central-directory layout rather than a hand-rolled fixture.
 func makeTestZip(_ files: [String: String]) throws -> Data {
     let dir = FileManager.default.temporaryDirectory
         .appendingPathComponent("ziptest-\(UUID().uuidString)")

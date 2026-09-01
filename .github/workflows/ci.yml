@@ -91,5 +91,8 @@ jobs:
           swift build --product AppStoreConnectKit
           swift build --product app-store-connect-mcp
 
+      - name: Install zip
+        run: apt-get update && apt-get install -y --no-install-recommends zip
+
       - name: Test
         run: swift test --enable-code-coverage --no-parallel
