@@ -24,12 +24,15 @@ let package = Package(
         .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", from: "0.12.1"),
     ],
     targets: [
+        // Linux has no `Compression` framework; ZipArchive falls back to zlib there.
+        .systemLibrary(name: "CZlib"),
         .target(
             name: "AppStoreConnectKit",
             dependencies: [
                 .product(name: "Crypto", package: "swift-crypto"),
                 .product(name: "JWTKit", package: "jwt-kit"),
                 .product(name: "Logging", package: "swift-log"),
+                .target(name: "CZlib", condition: .when(platforms: [.linux])),
             ]
         ),
         .target(

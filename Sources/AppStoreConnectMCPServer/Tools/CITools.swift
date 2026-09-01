@@ -303,7 +303,8 @@ enum CITools {
             let client = try makeClient()
             let workflowID = try require(arguments, "workflow_id")
             let limit = arguments["limit"]?.intValue ?? 20
-            let failedOnly = arguments["failed_only"]?.boolValue
+            let failedOnly =
+                arguments["failed_only"]?.boolValue
                 ?? (arguments["failed_only"]?.stringValue == "true")
             return try json(
                 await client.ciBuildRuns(workflowID: workflowID, limit: limit, failedOnly: failedOnly))

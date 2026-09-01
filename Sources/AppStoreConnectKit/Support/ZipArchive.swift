@@ -1,5 +1,10 @@
-import Compression
 import Foundation
+
+#if canImport(Compression)
+import Compression
+#else
+import CZlib
+#endif
 
 // MARK: - Minimal ZIP reader
 //
@@ -212,13 +217,16 @@ struct ZipArchive: Sendable {
             if headerID == 0x0001 {
                 var field = fieldStart
                 if uncompressedSize == 0xFFFF_FFFF, field + 8 <= fieldStart + fieldSize {
-                    uncompressedSize = Int(readU64(bytes, field)); field += 8
+                    uncompressedSize = Int(readU64(bytes, field))
+                    field += 8
                 }
                 if compressedSize == 0xFFFF_FFFF, field + 8 <= fieldStart + fieldSize {
-                    compressedSize = Int(readU64(bytes, field)); field += 8
+                    compressedSize = Int(readU64(bytes, field))
+                    field += 8
                 }
                 if localOffset == 0xFFFF_FFFF, field + 8 <= fieldStart + fieldSize {
-                    localOffset = Int(readU64(bytes, field)); field += 8
+                    localOffset = Int(readU64(bytes, field))
+                    field += 8
                 }
                 return
             }
@@ -231,6 +239,7 @@ struct ZipArchive: Sendable {
     private static func inflate(_ input: [UInt8], hint: Int) -> Data? {
         guard !input.isEmpty else { return Data() }
 
+        #if canImport(Compression)
         // A ZIP central-directory entry carries the exact uncompressed size, so when
         // `hint` is trustworthy do a single-shot decode. Only when it is unknown
         // (ZIP64 gaps, streamed entries) fall back to a doubling buffer.
@@ -255,7 +264,49 @@ struct ZipArchive: Sendable {
             return Data(output[0..<written])
         }
         return nil
+        #else
+        return zlibInflate(input, hint: hint)
+        #endif
     }
+
+    #if !canImport(Compression)
+    /// Raw-DEFLATE decode via zlib (`windowBits: -15`), for platforms without `Compression`.
+    private static func zlibInflate(_ input: [UInt8], hint: Int) -> Data? {
+        var stream = z_stream()
+        guard
+            inflateInit2_(&stream, -15, ZLIB_VERSION, Int32(MemoryLayout<z_stream>.size)) == Z_OK
+        else { return nil }
+        defer { inflateEnd(&stream) }
+
+        var output: [UInt8] = []
+        let chunkSize = hint > 0 ? hint : max(input.count * 4, 64 * 1024)
+
+        let status: Int32? = input.withUnsafeBufferPointer { src -> Int32? in
+            guard let srcBase = UnsafeMutablePointer(mutating: src.baseAddress) else { return nil }
+            stream.next_in = srcBase
+            stream.avail_in = UInt32(src.count)
+
+            var status: Int32 = Z_OK
+            repeat {
+                if output.count + chunkSize > maxEntryBytes { return Z_BUF_ERROR }
+                var buffer = [UInt8](repeating: 0, count: chunkSize)
+                let written: Int = buffer.withUnsafeMutableBufferPointer { dst -> Int in
+                    guard let dstBase = dst.baseAddress else { return -1 }
+                    stream.next_out = dstBase
+                    stream.avail_out = UInt32(dst.count)
+                    status = CZlib.inflate(&stream, Z_NO_FLUSH)
+                    return dst.count - Int(stream.avail_out)
+                }
+                if written < 0 { return nil }
+                output.append(contentsOf: buffer[0..<written])
+            } while status == Z_OK && stream.avail_out == 0
+            return status
+        }
+
+        guard status == Z_STREAM_END || status == Z_OK else { return nil }
+        return Data(output)
+    }
+    #endif
 
     // MARK: - Little-endian reads (all bounds-checked by the callers)
 
