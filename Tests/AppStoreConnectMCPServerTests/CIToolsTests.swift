@@ -132,9 +132,15 @@ struct CIToolsTests {
 
     @Test("asc_ci_get_build_run merges run + actions into one payload")
     func getBuildRun() async throws {
+        // `asc_ci_get_build_run` issues the run and actions requests concurrently
+        // (`async let`), so pin the actions response to its endpoint rather than
+        // relying on FIFO order.
         let client = makeMockMCPClient([
             jsonCanned(["data": ["id": "run-1", "attributes": ["number": 2, "completionStatus": "FAILED"]]]),
-            jsonCanned(["data": [["id": "act-1", "attributes": ["name": "Build", "completionStatus": "FAILED"]]]]),
+            jsonCanned(
+                ["data": [["id": "act-1", "attributes": ["name": "Build", "completionStatus": "FAILED"]]]],
+                pathContains: "/actions"
+            ),
         ])
         let result = try await CITools.call(name: "asc_ci_get_build_run", arguments: ["build_run_id": .string("run-1")]) {
             client

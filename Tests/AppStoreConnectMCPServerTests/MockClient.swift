@@ -12,6 +12,11 @@ final class MCPMockURLProtocol: URLProtocol {
     struct Canned: Sendable {
         let statusCode: Int
         let body: Data
+        /// When set, this response is only served to a request whose URL contains
+        /// this substring. Lets a test pin responses to endpoints when the code
+        /// under test issues requests concurrently (e.g. `async let`), where plain
+        /// FIFO ordering is racy.
+        var pathContains: String?
     }
 
     private static let lock = NSLock()
@@ -23,10 +28,21 @@ final class MCPMockURLProtocol: URLProtocol {
         queue = responses
     }
 
-    private static func next() -> Canned {
+    private static func next(for url: URL?) -> Canned {
         lock.lock()
         defer { lock.unlock() }
-        return queue.isEmpty ? Canned(statusCode: 500, body: Data("no mock".utf8)) : queue.removeFirst()
+        let path = url?.absoluteString ?? ""
+        if let index = queue.firstIndex(where: { canned in
+            guard let needle = canned.pathContains else { return false }
+            return path.contains(needle)
+        }) {
+            return queue.remove(at: index)
+        }
+        // Fall back to FIFO for responses that don't pin a path.
+        if let index = queue.firstIndex(where: { $0.pathContains == nil }) {
+            return queue.remove(at: index)
+        }
+        return Canned(statusCode: 500, body: Data("no mock".utf8))
     }
 
     override class func canInit(with request: URLRequest) -> Bool { true }
@@ -34,7 +50,7 @@ final class MCPMockURLProtocol: URLProtocol {
     override func stopLoading() {}
 
     override func startLoading() {
-        let canned = Self.next()
+        let canned = Self.next(for: request.url)
         let response = HTTPURLResponse(
             url: request.url!,
             statusCode: canned.statusCode,
@@ -61,6 +77,14 @@ func makeMockMCPClient(_ responses: [MCPMockURLProtocol.Canned]) -> AppStoreConn
     )
 }
 
-func jsonCanned(_ object: Any, statusCode: Int = 200) -> MCPMockURLProtocol.Canned {
-    .init(statusCode: statusCode, body: try! JSONSerialization.data(withJSONObject: object))
+func jsonCanned(
+    _ object: Any,
+    statusCode: Int = 200,
+    pathContains: String? = nil
+) -> MCPMockURLProtocol.Canned {
+    .init(
+        statusCode: statusCode,
+        body: try! JSONSerialization.data(withJSONObject: object),
+        pathContains: pathContains
+    )
 }
