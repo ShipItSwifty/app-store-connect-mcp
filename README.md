@@ -98,6 +98,20 @@ walk short and more resources exist.
 
 ## MCP server
 
+### Install
+
+**Homebrew** (macOS and Linux) — from the [ShipItSwifty tap](https://github.com/ShipItSwifty/homebrew-tap):
+
+```bash
+brew install ShipItSwifty/tap/app-store-connect-mcp
+```
+
+`brew upgrade app-store-connect-mcp` tracks new releases. This puts
+`app-store-connect-mcp` on your `PATH`; use `which app-store-connect-mcp` for the
+absolute path a client's `command` field needs.
+
+Otherwise build from source — see [Run it](#run-it).
+
 ### Credentials
 
 Set these environment variables (same names as `altool` / Fastlane):
