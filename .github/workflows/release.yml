@@ -24,7 +24,7 @@ concurrency:
 jobs:
   build-macos:
     name: Build macOS Universal Binary
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
         with:
@@ -73,7 +73,7 @@ jobs:
     name: Build Linux Binary
     runs-on: ubuntu-24.04
     container:
-      image: swift:6.1-noble
+      image: swift:6.3-noble
     steps:
       - uses: actions/checkout@v4
         with:
