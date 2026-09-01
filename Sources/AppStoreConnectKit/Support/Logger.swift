@@ -1,22 +1,15 @@
-@_exported import Logging
+import Logging
 
 extension Logger {
-    /// Creates a `Logger` scoped to a specific type within a subsystem.
+    /// Creates a `Logger` labelled `"<subsystem>.<TypeName>"`.
     ///
-    /// Provides consistent logger naming across ShipItSwifty by using the type name
-    /// as the category. Built on `swift-log` so it works on macOS and Linux alike.
-    ///
-    /// ## Usage
-    /// ```swift
-    /// private let logger = Logger.forType(subsystem: "ShipItSwifty", BuildAction.self)
-    /// logger.info("Starting build for scheme: \(scheme)")
-    /// ```
+    /// Internal helper so this package doesn't export a `Logger` extension that
+    /// would collide with an identically-named one in a consuming module.
     ///
     /// - Parameters:
-    ///   - subsystem: The subsystem identifier, e.g. `"ShipItSwifty"`.
+    ///   - subsystem: The subsystem identifier, e.g. `"AppStoreConnectKit"`.
     ///   - type: The type to use as the log category.
-    /// - Returns: A `Logger` whose label is `"<subsystem>.<TypeName>"`.
-    public static func forType<T>(subsystem: String, _ type: T.Type) -> Logger {
+    static func forType<T>(subsystem: String, _ type: T.Type) -> Logger {
         Logger(label: "\(subsystem).\(String(describing: T.self))")
     }
 }
