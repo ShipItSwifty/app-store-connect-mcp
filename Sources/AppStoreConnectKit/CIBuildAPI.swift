@@ -116,11 +116,13 @@ extension AppStoreConnectClient {
             let status = action.attributes?.completionStatus ?? ""
             guard failedStatuses.contains(status.uppercased()) else { continue }
 
-            async let issuesResp = ciIssues(buildActionID: action.id)
-            async let testsResp = ciTestResults(buildActionID: action.id)
-            async let artifactsResp = ciArtifacts(buildActionID: action.id)
+            // Sequential on purpose: keeps ordering deterministic and avoids
+            // firing 3 concurrent requests per failed action at a rate-limited API.
+            let issuesResp = try await ciIssues(buildActionID: action.id)
+            let testsResp = try await ciTestResults(buildActionID: action.id)
+            let artifactsResp = try await ciArtifacts(buildActionID: action.id)
 
-            let issues = try await issuesResp.data.map { issue in
+            let issues = issuesResp.data.map { issue in
                 CIFailureReport.FailedAction.Issue(
                     type: issue.attributes?.issueType,
                     message: issue.attributes?.message,
@@ -128,7 +130,8 @@ extension AppStoreConnectClient {
                     line: issue.attributes?.fileSource?.lineNumber
                 )
             }
-            let failedTests = try await testsResp.data
+            let failedTests =
+                testsResp.data
                 .filter { ($0.attributes?.status ?? "").uppercased().contains("FAIL") }
                 .map { result in
                     CIFailureReport.FailedAction.FailedTest(
@@ -138,7 +141,7 @@ extension AppStoreConnectClient {
                         message: result.attributes?.message
                     )
                 }
-            let artifacts = try await artifactsResp.data.map { artifact in
+            let artifacts = artifactsResp.data.map { artifact in
                 CIFailureReport.FailedAction.Artifact(
                     fileType: artifact.attributes?.fileType,
                     fileName: artifact.attributes?.fileName,
