@@ -41,6 +41,47 @@ struct CIToolsTests {
         }
     }
 
+    @Test("Every advertised tool is dispatchable")
+    func everyToolDispatches() async throws {
+        // The catalog and the dispatcher were once two hand-maintained lists, so a
+        // tool could be advertised and then fall through to "Unknown tool". They are
+        // now one list of `ToolSpec`s; this pins that invariant.
+        for tool in CITools.all {
+            // Called with no arguments and a provider that refuses to build a client,
+            // every handler either throws (missing argument / no client) or returns —
+            // both mean the name resolved. Only "Unknown tool" means it did not.
+            do {
+                let result = try await CITools.dispatch(name: tool.name, arguments: [:]) {
+                    throw ASCError.invalidConfiguration(reason: "no client in this test")
+                }
+                #expect(!text(result).contains("Unknown tool"), "\(tool.name) is advertised but not dispatchable")
+            } catch is ASCError {
+                // Reached the handler, which is what this test asserts.
+            }
+        }
+    }
+
+    @Test("Generated schemas mark exactly the required arguments as required")
+    func schemasMatchArgumentSpecs() throws {
+        for spec in CITools.specs {
+            guard case .object(let schema) = spec.tool.inputSchema,
+                case .object(let properties)? = schema["properties"]
+            else {
+                Issue.record("\(spec.name): schema is not an object with properties")
+                continue
+            }
+            #expect(properties.count == spec.arguments.count)
+
+            var required: Set<String> = []
+            if case .array(let entries)? = schema["required"] {
+                for entry in entries {
+                    if case .string(let key) = entry { required.insert(key) }
+                }
+            }
+            #expect(required == Set(spec.arguments.filter(\.isRequired).map(\.name)))
+        }
+    }
+
     @Test("Catalog includes the new diagnostics tools")
     func catalogHasNewTools() {
         let names = Set(CITools.all.map(\.name))

@@ -150,7 +150,7 @@ public struct AppStoreSubmissionService: Sendable {
     /// - Returns: A ``SubmissionStatusReport``.
     /// - Throws: ``ASCError/apiError(statusCode:body:)`` if the app cannot be resolved.
     public func status(bundleID: String) async throws -> SubmissionStatusReport {
-        let app = try await resolveApp(bundleID: bundleID)
+        let app = try await client.app(bundleID: bundleID)
 
         let versionResp: ASCListResponse<AppStoreVersionResource> = try await client.get(
             "/v1/apps/\(app.id)/appStoreVersions",
@@ -162,7 +162,7 @@ public struct AppStoreSubmissionService: Sendable {
                 id: resource.id,
                 versionString: resource.attributes?.versionString,
                 platform: resource.attributes?.platform,
-                state: resource.attributes?.appStoreState ?? resource.attributes?.appVersionState,
+                state: resource.state,
                 createdDate: resource.attributes?.createdDate
             )
         }
@@ -360,20 +360,6 @@ public struct AppStoreSubmissionService: Sendable {
 
     // MARK: - Private
 
-    private func resolveApp(bundleID: String) async throws -> ASCApp {
-        let apps: ASCListResponse<ASCApp> = try await client.get(
-            "/v1/apps",
-            query: ["filter[bundleId]": bundleID]
-        )
-        guard let app = apps.data.first else {
-            throw ASCError.apiError(
-                statusCode: 404,
-                body: "App with bundle ID '\(bundleID)' not found in App Store Connect"
-            )
-        }
-        return app
-    }
-
     /// Returns the build attached to the given App Store version, or `nil` when none is set.
     ///
     /// `GET /v1/appStoreVersions/{id}/build` returns `{ "data": null }` (HTTP 200) when no
@@ -421,51 +407,10 @@ public struct AppStoreSubmissionService: Sendable {
     }
 }
 
-// MARK: - Wire resources (kept file-private; only the normalized report is public)
-
-private struct AppStoreVersionResource: Codable, Sendable {
-    let id: String
-    let attributes: Attributes?
-
-    struct Attributes: Codable, Sendable {
-        let versionString: String?
-        let platform: String?
-        let appStoreState: String?
-        let appVersionState: String?
-        let createdDate: String?
-    }
-}
-
-private struct ReviewSubmissionResource: Codable, Sendable {
-    let id: String
-    let attributes: Attributes?
-
-    struct Attributes: Codable, Sendable {
-        let state: String?
-        let platform: String?
-        let submittedDate: String?
-    }
-}
-
-private struct ReviewSubmissionItemResource: Codable, Sendable {
-    let id: String
-    let attributes: Attributes?
-
-    struct Attributes: Codable, Sendable {
-        let state: String?
-    }
-}
-
-private struct BuildResource: Codable, Sendable {
-    let id: String
-    let attributes: Attributes?
-
-    struct Attributes: Codable, Sendable {
-        let version: String?
-        let processingState: String?
-        let expired: Bool?
-    }
-}
+// MARK: - Wire resources
+//
+// The shared shapes live in `WireResources.swift`; only what is specific to this
+// service is declared here.
 
 /// `{ "data": <build> | null }` — the shape of `GET /v1/appStoreVersions/{id}/build`.
 private struct SingleBuildEnvelope: Codable, Sendable {

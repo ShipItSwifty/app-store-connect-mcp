@@ -14,6 +14,18 @@ struct ZipArchiveTests {
         #expect(!ZipArchive.looksLikeZip(Data()))
     }
 
+    @Test("An empty file extracts as empty rather than being skipped as corrupt")
+    func emptyEntryExtracts() throws {
+        let zip = try makeZip([
+            "ci_post_xcodebuild.log": "",
+            "xcodebuild.log": "all good\n",
+        ])
+        let (entries, skipped) = try ZipArchive.entries(in: zip)
+        let empty = try #require(entries.first { $0.path.hasSuffix("ci_post_xcodebuild.log") })
+        #expect(empty.data.isEmpty)
+        #expect(!skipped.contains { $0.contains("ci_post_xcodebuild.log") })
+    }
+
     @Test("entries decompresses every file and preserves paths")
     func extractsEntries() throws {
         let zip = try makeZip([

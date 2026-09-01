@@ -97,6 +97,54 @@ func makeClientRecording(
     )
 }
 
+/// Like `makeClient(responses:)` but records the JSON body of every request that has
+/// one, so tests can assert what was actually sent on the wire.
+///
+/// Guards the encoding of write requests: App Store Connect requires camelCase keys,
+/// and nothing else in the suite looks at an outgoing body.
+func makeClientRecording(
+    observedBodies: LockedBox<[[String: Any]]>,
+    responses: [MockHTTPResponse]
+) -> AppStoreConnectClient {
+    let queue = ResponseQueue(responses)
+    let session = makeMockSession { request in
+        if let data = request.bodyData,
+            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        {
+            observedBodies.mutate { $0.append(object) }
+        }
+        return queue.next()
+    }
+    return AppStoreConnectClient(
+        keyID: "KEY",
+        issuerID: "ISSUER",
+        privateKeyData: Data("placeholder".utf8),
+        session: session,
+        tokenProvider: { "test-token" }
+    )
+}
+
+extension URLRequest {
+    /// The request body, read from `httpBodyStream` when `URLSession` has already
+    /// converted `httpBody` into a stream (which it does before reaching a `URLProtocol`).
+    var bodyData: Data? {
+        if let httpBody { return httpBody }
+        guard let stream = httpBodyStream else { return nil }
+        stream.open()
+        defer { stream.close() }
+
+        var data = Data()
+        let bufferSize = 4096
+        var buffer = [UInt8](repeating: 0, count: bufferSize)
+        while stream.hasBytesAvailable {
+            let read = stream.read(&buffer, maxLength: bufferSize)
+            guard read > 0 else { break }
+            data.append(buffer, count: read)
+        }
+        return data.isEmpty ? nil : data
+    }
+}
+
 /// Like `makeClient(responses:)` but records the HTTP method of every request.
 func makeClientRecording(
     observedMethods: LockedBox<[String]>,

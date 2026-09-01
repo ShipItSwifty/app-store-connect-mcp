@@ -8,16 +8,18 @@ import Foundation
 extension AppStoreConnectClient {
     /// Lists Xcode Cloud products, optionally filtered to one app.
     ///
-    /// - Parameter appID: App Store Connect app id (`filter[app]`). Pass `nil` for all products.
-    public func ciProducts(appID: String? = nil, limit: Int = 50) async throws -> ASCListResponse<CIProduct> {
-        var query = ["limit": String(limit)]
+    /// - Parameters:
+    ///   - appID: App Store Connect app id (`filter[app]`). Pass `nil` for all products.
+    ///   - limit: Maximum products to return across all pages.
+    public func ciProducts(appID: String? = nil, limit: Int = 200) async throws -> ASCListResponse<CIProduct> {
+        var query: [String: String] = [:]
         if let appID { query["filter[app]"] = appID }
-        return try await get("/v1/ciProducts", query: query)
+        return try await getAll("/v1/ciProducts", query: query, limit: limit)
     }
 
     /// Lists workflows for an Xcode Cloud product.
-    public func ciWorkflows(productID: String, limit: Int = 50) async throws -> ASCListResponse<CIWorkflow> {
-        try await get("/v1/ciProducts/\(productID)/workflows", query: ["limit": String(limit)])
+    public func ciWorkflows(productID: String, limit: Int = 200) async throws -> ASCListResponse<CIWorkflow> {
+        try await getAll("/v1/ciProducts/\(productID)/workflows", limit: limit)
     }
 
     /// Fetches a single workflow by id, including its `actions` (with per-test-action
@@ -41,20 +43,20 @@ extension AppStoreConnectClient {
         failedOnly: Bool = false
     ) async throws -> ASCListResponse<CIBuildRun> {
         guard failedOnly else {
-            return try await get(
+            return try await getAll(
                 "/v1/ciWorkflows/\(workflowID)/buildRuns",
-                query: ["limit": String(limit), "sort": "-number"]
+                query: ["sort": "-number"],
+                limit: limit
             )
         }
 
-        let overFetch = min(200, max(limit * 5, 50))
-        let page: ASCListResponse<CIBuildRun> = try await get(
+        let overFetch = min(AppStoreConnectClient.maxPageSize, max(limit * 5, 50))
+        let page: ASCListResponse<CIBuildRun> = try await getAll(
             "/v1/ciWorkflows/\(workflowID)/buildRuns",
-            query: ["limit": String(overFetch), "sort": "-number"]
+            query: ["sort": "-number"],
+            limit: overFetch
         )
-        let failed = page.data.filter { run in
-            CIBuildRun.failureCompletionStatuses.contains((run.attributes?.completionStatus ?? "").uppercased())
-        }
+        let failed = page.data.filter(\.isFailure)
         return ASCListResponse(data: Array(failed.prefix(limit)), links: page.links)
     }
 
@@ -64,23 +66,23 @@ extension AppStoreConnectClient {
     }
 
     /// Lists the actions (build / analyze / test / archive steps) of a build run.
-    public func ciBuildActions(buildRunID: String, limit: Int = 50) async throws -> ASCListResponse<CIBuildAction> {
-        try await get("/v1/ciBuildRuns/\(buildRunID)/actions", query: ["limit": String(limit)])
+    public func ciBuildActions(buildRunID: String, limit: Int = 200) async throws -> ASCListResponse<CIBuildAction> {
+        try await getAll("/v1/ciBuildRuns/\(buildRunID)/actions", limit: limit)
     }
 
     /// Lists the issues (errors / warnings / analyzer findings) for a build action.
     public func ciIssues(buildActionID: String, limit: Int = 200) async throws -> ASCListResponse<CIIssue> {
-        try await get("/v1/ciBuildActions/\(buildActionID)/issues", query: ["limit": String(limit)])
+        try await getAll("/v1/ciBuildActions/\(buildActionID)/issues", limit: limit)
     }
 
     /// Lists the test results for a build action.
     public func ciTestResults(buildActionID: String, limit: Int = 200) async throws -> ASCListResponse<CITestResult> {
-        try await get("/v1/ciBuildActions/\(buildActionID)/testResults", query: ["limit": String(limit)])
+        try await getAll("/v1/ciBuildActions/\(buildActionID)/testResults", limit: limit)
     }
 
     /// Lists the downloadable artifacts (log bundle, xcresult, products) for a build action.
-    public func ciArtifacts(buildActionID: String, limit: Int = 50) async throws -> ASCListResponse<CIArtifact> {
-        try await get("/v1/ciBuildActions/\(buildActionID)/artifacts", query: ["limit": String(limit)])
+    public func ciArtifacts(buildActionID: String, limit: Int = 200) async throws -> ASCListResponse<CIArtifact> {
+        try await getAll("/v1/ciBuildActions/\(buildActionID)/artifacts", limit: limit)
     }
 
     /// Summarizes the test plans a workflow runs, derived from its `TEST` actions.
@@ -204,12 +206,9 @@ extension AppStoreConnectClient {
         let run = try await ciBuildRun(id: buildRunID).data
         let actions = try await ciBuildActions(buildRunID: buildRunID).data
 
-        let failedStatuses: Set<String> = ["FAILED", "ERRORED", "CANCELED", "INVALID"]
         var failed: [CIFailureReport.FailedAction] = []
 
-        for action in actions {
-            let status = action.attributes?.completionStatus ?? ""
-            guard failedStatuses.contains(status.uppercased()) else { continue }
+        for action in actions where action.isUnsuccessful {
 
             // Sequential on purpose: keeps ordering deterministic and avoids
             // firing 3 concurrent requests per failed action at a rate-limited API.

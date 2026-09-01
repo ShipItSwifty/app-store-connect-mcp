@@ -4,22 +4,19 @@ import Testing
 @testable import AppStoreConnectKit
 
 /// Decode-from-fixture / re-encode round-trip coverage for the wire models.
-/// The client decodes with `.convertFromSnakeCase`, so fixtures use snake_case
-/// where the API does and these tests mirror that decoder configuration.
+///
+/// Fixtures are camelCase because that is what App Store Connect actually sends,
+/// and the client decodes with a plain `JSONDecoder` (no key strategy) to match.
 @Suite("Model Codable")
 struct ModelCodableTests {
-    private var decoder: JSONDecoder {
-        let d = JSONDecoder()
-        d.keyDecodingStrategy = .convertFromSnakeCase
-        return d
-    }
+    private var decoder: JSONDecoder { JSONDecoder() }
 
     @Test("ASCListResponse<ASCApp> decodes the data + links envelope")
     func decodesAppList() throws {
         let json = """
             {
               "data": [
-                { "id": "1", "attributes": { "bundle_id": "com.example.app", "name": "Example", "primary_locale": "en-US" } }
+                { "id": "1", "attributes": { "bundleId": "com.example.app", "name": "Example", "primaryLocale": "en-US" } }
               ],
               "links": { "self": "https://api/apps", "next": "https://api/apps?cursor=2" }
             }
@@ -36,10 +33,10 @@ struct ModelCodableTests {
               "id": "run-1",
               "attributes": {
                 "number": 7,
-                "execution_progress": "COMPLETE",
-                "completion_status": "FAILED",
-                "source_commit": { "commit_sha": "abc123", "message": "oops", "web_url": "https://git/abc123" },
-                "is_pull_request_build": true
+                "executionProgress": "COMPLETE",
+                "completionStatus": "FAILED",
+                "sourceCommit": { "commitSha": "abc123", "message": "oops", "webUrl": "https://git/abc123" },
+                "isPullRequestBuild": true
               }
             }
             """
@@ -60,9 +57,9 @@ struct ModelCodableTests {
               "id": "act-1",
               "attributes": {
                 "name": "Build",
-                "action_type": "BUILD",
-                "completion_status": "FAILED",
-                "issue_counts": { "errors": 2, "warnings": 5, "analyzer_warnings": 0, "test_failures": 0 }
+                "actionType": "BUILD",
+                "completionStatus": "FAILED",
+                "issueCounts": { "errors": 2, "warnings": 5, "analyzerWarnings": 0, "testFailures": 0 }
               }
             }
             """
@@ -77,11 +74,11 @@ struct ModelCodableTests {
             {
               "id": "test-1",
               "attributes": {
-                "class_name": "MathTests",
+                "className": "MathTests",
                 "name": "testAddition",
                 "status": "FAILURE",
-                "destination_test_results": [
-                  { "device_name": "iPhone 15", "os_version": "17.5", "status": "FAILURE", "duration": 0.12 }
+                "destinationTestResults": [
+                  { "deviceName": "iPhone 15", "osVersion": "17.5", "status": "FAILURE", "duration": 0.12 }
                 ]
               }
             }
@@ -124,7 +121,7 @@ struct ModelCodableTests {
     @Test("CIArtifact decodes fileSize and downloadUrl")
     func ciArtifactDecode() throws {
         let json = """
-            { "id": "a1", "attributes": { "file_type": "LOG_BUNDLE", "file_name": "logs.zip", "file_size": 4096, "download_url": "https://dl/logs" } }
+            { "id": "a1", "attributes": { "fileType": "LOG_BUNDLE", "fileName": "logs.zip", "fileSize": 4096, "downloadUrl": "https://dl/logs" } }
             """
         let artifact = try decoder.decode(CIArtifact.self, from: Data(json.utf8))
         #expect(artifact.attributes?.fileSize == 4096)

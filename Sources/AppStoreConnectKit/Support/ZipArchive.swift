@@ -238,6 +238,10 @@ struct ZipArchive: Sendable {
 
     private static func inflate(_ input: [UInt8], hint: Int) -> Data? {
         guard !input.isEmpty else { return Data() }
+        // An empty file still has a (tiny) DEFLATE stream, which decodes to zero
+        // bytes. Without this, every empty log inside a bundle was reported as a
+        // corrupt stream rather than as the empty file it is.
+        if hint == 0 { return Data() }
 
         #if canImport(Compression)
         // A ZIP central-directory entry carries the exact uncompressed size, so when

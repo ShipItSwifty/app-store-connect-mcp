@@ -45,9 +45,9 @@ struct AppStoreConnectMCP {
             do {
                 return try await CITools.call(name: params.name, arguments: params.arguments ?? [:])
             } catch let error as ASCError {
-                return .init(content: [.text("App Store Connect error: \(error.localizedDescription)")], isError: true)
+                return .init(content: [.plainText("App Store Connect error: \(error.localizedDescription)")], isError: true)
             } catch {
-                return .init(content: [.text("Error: \(error.localizedDescription)")], isError: true)
+                return .init(content: [.plainText("Error: \(error.localizedDescription)")], isError: true)
             }
         }
 
@@ -55,8 +55,9 @@ struct AppStoreConnectMCP {
         try await server.start(transport: transport)
         log.info("app-store-connect-mcp ready on stdio")
 
-        // Keep the process alive; the transport runs the stdio read loop.
-        try await Task.sleep(for: .seconds(60 * 60 * 24 * 365))
+        // Blocks while the transport runs the stdio read loop, and returns once the
+        // client closes it — so the process exits with its host instead of lingering.
+        await server.waitUntilCompleted()
     }
 
     static let usage = """

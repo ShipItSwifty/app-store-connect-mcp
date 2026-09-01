@@ -7,6 +7,28 @@ import Testing
 struct RetryPolicyTests {
     private struct Boom: Error {}
 
+    @Test("Sub-second delays still grow between attempts")
+    func subSecondBackoffGrows() async throws {
+        // The backoff used to be recomputed from `Duration.components.seconds`, which
+        // truncated any sub-second delay to zero and flattened every later attempt.
+        let policy = RetryPolicy(maxAttempts: 3, initialDelay: .milliseconds(20), multiplier: 2.0)
+        let calls = Counter()
+
+        let start = ContinuousClock.now
+        await #expect(throws: Boom.self) {
+            try await policy.execute {
+                await calls.increment()
+                throw Boom()
+            }
+        }
+        let elapsed = ContinuousClock.now - start
+
+        #expect(await calls.value == 3)
+        // 20ms before attempt 2 plus 40ms before attempt 3; a collapsed backoff
+        // would finish in well under that.
+        #expect(elapsed >= .milliseconds(55))
+    }
+
     @Test("Returns immediately on first success without retrying")
     func firstTrySucceeds() async throws {
         let policy = RetryPolicy(maxAttempts: 3, initialDelay: .zero)

@@ -58,9 +58,10 @@ public struct RetryPolicy: Sendable {
                 if attempt > 0 {
                     logger.debug("Retry attempt \(attempt) of \(maxAttempts - 1), waiting \(currentDelay)")
                     try await Task.sleep(for: currentDelay)
-                    currentDelay = Duration.seconds(
-                        Double(currentDelay.components.seconds) * multiplier
-                    )
+                    // `Duration * Double` keeps sub-second precision; reading
+                    // `.components.seconds` truncated a sub-second delay to zero and
+                    // flattened the backoff for every subsequent attempt.
+                    currentDelay = currentDelay * multiplier
                 }
                 return try await operation()
             } catch {

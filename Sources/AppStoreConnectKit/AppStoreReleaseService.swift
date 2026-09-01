@@ -59,7 +59,7 @@ public struct AppStoreReleaseService: Sendable {
         bundleID: String,
         directory: String
     ) async throws -> MetadataSyncResult {
-        let app = try await resolveApp(bundleID: bundleID)
+        let app = try await client.app(bundleID: bundleID)
         let appStoreVersion = try await resolveLatestAppStoreVersion(appID: app.id)
 
         let infoLocalizations: ASCListResponse<AppInfoLocalizationResource> = try await client.get(
@@ -126,7 +126,7 @@ public struct AppStoreReleaseService: Sendable {
         directory: String,
         resolveVersionString: @Sendable () async throws -> String
     ) async throws -> MetadataSyncResult {
-        let app = try await resolveApp(bundleID: bundleID)
+        let app = try await client.app(bundleID: bundleID)
         let appStoreVersion = try await resolveOrCreateAppStoreVersion(
             appID: app.id,
             resolveVersionString: resolveVersionString
@@ -181,7 +181,7 @@ public struct AppStoreReleaseService: Sendable {
         phasedRelease: Bool,
         resolveVersionString: @Sendable () async throws -> String
     ) async throws -> ReviewSubmissionResult {
-        let app = try await resolveApp(bundleID: bundleID)
+        let app = try await client.app(bundleID: bundleID)
         let appStoreVersion = try await resolveOrCreateAppStoreVersion(
             appID: app.id,
             resolveVersionString: resolveVersionString
@@ -227,19 +227,6 @@ public struct AppStoreReleaseService: Sendable {
 
         logger.info("Created review submission '\(submission.data.id)' for version '\(appStoreVersion.id)'")
         return ReviewSubmissionResult(appStoreVersionID: appStoreVersion.id, reviewSubmissionID: submission.data.id)
-    }
-
-    private func resolveApp(bundleID: String) async throws -> ASCApp {
-        let apps: ASCListResponse<ASCApp> = try await client.get(
-            "/v1/apps",
-            query: ["filter[bundleId]": bundleID]
-        )
-
-        guard let app = apps.data.first else {
-            throw ASCError.apiError(statusCode: 404, body: "App with bundle ID '\(bundleID)' not found in App Store Connect")
-        }
-
-        return app
     }
 
     private func resolveLatestAppStoreVersion(appID: String) async throws -> AppStoreVersionResource? {
@@ -445,16 +432,6 @@ private struct AppInfoRelationship: Encodable, Sendable {
     let data: ResourceIdentifier
 }
 
-private struct AppStoreVersionResource: Codable, Sendable {
-    let id: String
-    let attributes: Attributes?
-
-    struct Attributes: Codable, Sendable {
-        let versionString: String?
-        let appStoreState: String?
-    }
-}
-
 private struct AppStoreVersionCreateRequest: Encodable, Sendable {
     let data: DataBody
 
@@ -548,10 +525,6 @@ private struct AppStoreVersionLocalizationUpdateRequest: Encodable, Sendable {
 
 private struct AppStoreVersionRelationship: Encodable, Sendable {
     let data: ResourceIdentifier
-}
-
-private struct ReviewSubmissionResource: Codable, Sendable {
-    let id: String
 }
 
 private struct ReviewSubmissionCreateRequest: Encodable, Sendable {

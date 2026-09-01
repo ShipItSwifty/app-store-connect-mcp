@@ -185,7 +185,16 @@ public struct CIBuildRun: Codable, Sendable {
 
     /// Statuses that indicate a build run genuinely failed (as opposed to
     /// succeeding, being skipped, or still running). Used to filter run lists.
+    ///
+    /// Deliberately excludes `CANCELED`: a run someone stopped by hand is not a red
+    /// build. Action-level collection uses the wider
+    /// ``CIBuildAction/unsuccessfulCompletionStatuses`` instead — see the note there.
     public static let failureCompletionStatuses: Set<String> = ["FAILED", "ERRORED", "INVALID"]
+
+    /// Whether this run's `completionStatus` counts as a failure.
+    public var isFailure: Bool {
+        Self.failureCompletionStatuses.contains((attributes?.completionStatus ?? "").uppercased())
+    }
 }
 
 /// One action (a build/analyze/test/archive step) inside a build run.
@@ -250,6 +259,20 @@ public struct CIBuildAction: Codable, Sendable {
     /// dates are unparseable.
     public var durationSeconds: Double? {
         CIDate.durationSeconds(from: attributes?.startedDate, to: attributes?.finishedDate)
+    }
+
+    /// Action statuses worth gathering diagnostics for.
+    ///
+    /// Wider than ``CIBuildRun/failureCompletionStatuses`` by `CANCELED` on purpose:
+    /// when a run fails, Xcode Cloud cancels its remaining actions, and those
+    /// canceled actions still carry issues that explain the break.
+    public static let unsuccessfulCompletionStatuses: Set<String> = [
+        "FAILED", "ERRORED", "INVALID", "CANCELED",
+    ]
+
+    /// Whether this action ended in a state worth collecting diagnostics for.
+    public var isUnsuccessful: Bool {
+        Self.unsuccessfulCompletionStatuses.contains((attributes?.completionStatus ?? "").uppercased())
     }
 }
 

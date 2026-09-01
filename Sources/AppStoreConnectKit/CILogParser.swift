@@ -14,6 +14,7 @@ import Foundation
 public struct CILogFinding: Codable, Sendable, Equatable {
     /// The kind of problem this line represents.
     public enum Kind: String, Codable, Sendable {
+        /// A diagnostic located at a `file:line:` — i.e. attributable to source.
         case compileError
         case compileWarning
         case linkerError
@@ -21,6 +22,7 @@ public struct CILogFinding: Codable, Sendable, Equatable {
         case testFailure
         case fatalError
         case scriptError
+        /// An `error:` line the parser could not attribute to a specific tool.
         case generic
     }
 
@@ -58,9 +60,12 @@ public struct CILogAnalysis: Codable, Sendable, Equatable {
         self.linesScanned = linesScanned
     }
 
-    /// Findings that represent a hard failure (errors, linker/signing failures, crashed tests).
+    /// Findings that represent a hard failure — everything except warnings.
+    ///
+    /// ``CILogFinding/Kind/generic`` is included: those lines carry an `error:` the
+    /// parser could not attribute to a specific tool, which is still a failure.
     public var errors: [CILogFinding] {
-        findings.filter { $0.kind != .compileWarning && $0.kind != .generic }
+        findings.filter { $0.kind != .compileWarning }
     }
 
     /// A compact, deduplicated summary suitable for embedding in an agent prompt.
@@ -139,42 +144,72 @@ public struct CILogParser: Sendable {
             return CILogFinding(kind: .testFailure, message: line, rawLine: line)
         }
 
-        // 4. Linker errors.
+        // 4. Linker errors. `ld: error` needs a word boundary — plain `contains` also
+        //    matched `xcodebui[ld: error]`, mislabelling every generic xcodebuild
+        //    failure as a link failure.
         if lower.contains("undefined symbol") || lower.contains("duplicate symbol")
-            || lower.contains("ld: error") || lower.contains("linker command failed")
+            || Self.containsWord("ld: error", in: lower) || lower.contains("linker command failed")
         {
             return CILogFinding(kind: .linkerError, message: line, rawLine: line)
         }
 
-        // 5. Code signing.
-        if lower.contains("code signing") || lower.contains("code sign error")
-            || lower.contains("no signing certificate")
-            || lower.contains("provisioning profile")
-                && lower.contains("error")
-        {
+        // 5. Code signing. Every phrasing here must co-occur with a failure word:
+        //    `Code Signing Identity = Apple Development` is ordinary build settings
+        //    output, not a problem, and flagging it buried the real errors.
+        let signingPhrases = [
+            "code signing", "code sign error", "no signing certificate", "provisioning profile",
+        ]
+        if signingPhrases.contains(where: lower.contains), Self.indicatesFailure(lower) {
             return CILogFinding(kind: .codeSigningError, message: line, rawLine: line)
         }
 
         // 6. Fatal errors / crashes.
-        if lower.hasPrefix("fatal error:") || lower.contains("fatal error:")
-            || lower.contains("segmentation fault") || lower.contains("terminating with uncaught exception")
+        if lower.contains("fatal error:") || lower.contains("segmentation fault")
+            || lower.contains("terminating with uncaught exception")
         {
             return CILogFinding(kind: .fatalError, message: line, rawLine: line)
         }
 
-        // 7. Shell / run-script phase failures.
+        // 7. Shell / run-script phase failures. The `+ ` guard skips the echoed
+        //    commands that `set -x` prints, which would otherwise match their own text.
         if lower.contains("command phasescriptexecution failed")
-            || (lower.hasPrefix("+ ") == false && lower.contains("error:") && lower.contains("script"))
+            || (!lower.hasPrefix("+ ") && lower.contains("error:") && lower.contains("script"))
         {
             return CILogFinding(kind: .scriptError, message: line, rawLine: line)
         }
 
-        // 8. Generic "error:" not otherwise classified (kept out of `errors`, still surfaced).
+        // 8. An unlocated `error:` we could not attribute to a specific tool.
         if lower.contains("error:") {
-            return CILogFinding(kind: .compileError, message: line, rawLine: line)
+            return CILogFinding(kind: .generic, message: line, rawLine: line)
         }
 
         return nil
+    }
+
+    /// Whether `token` appears in `line` at a word boundary — i.e. not as the tail of
+    /// a longer identifier. Used so `ld:` does not match inside `xcodebuild:`.
+    static func containsWord(_ token: String, in line: String) -> Bool {
+        var searchRange = line.startIndex..<line.endIndex
+        while let range = line.range(of: token, range: searchRange) {
+            if range.lowerBound == line.startIndex {
+                return true
+            }
+            let preceding = line[line.index(before: range.lowerBound)]
+            if !preceding.isLetter && !preceding.isNumber && preceding != "_" {
+                return true
+            }
+            guard range.upperBound < line.endIndex else { break }
+            searchRange = range.upperBound..<line.endIndex
+        }
+        return false
+    }
+
+    /// Whether a line carries a word that marks it as a failure rather than
+    /// informational output.
+    private static func indicatesFailure(_ lowercasedLine: String) -> Bool {
+        lowercasedLine.contains("error") || lowercasedLine.contains("failed")
+            || lowercasedLine.contains("failure") || lowercasedLine.contains("doesn't match")
+            || lowercasedLine.contains("no profile") || lowercasedLine.contains("not found")
     }
 
     /// Parses a `path:line:col: error|warning|note: message` clang/swift diagnostic.

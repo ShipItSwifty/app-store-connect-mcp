@@ -7,69 +7,62 @@ import MCP
 /// Every tool is read-only. The server performs no analysis of its own beyond the
 /// normalization done in `AppStoreConnectKit` (`CIFailureReport`, `CILogParser`,
 /// `AppStoreSubmissionService`); the MCP host agent does the reasoning.
+///
+/// Each tool is a ``ToolSpec`` carrying both its schema and its handler, so the
+/// advertised catalog and the dispatcher are the same list.
 enum CITools {
     /// How the dispatcher obtains an `AppStoreConnectClient`. Overridable in tests.
     typealias ClientProvider = @Sendable () throws -> AppStoreConnectClient
 
     // MARK: - Tool catalog
 
-    static let all: [Tool] = [
-        Tool(
+    static let specs: [ToolSpec] = [
+        ToolSpec(
             name: "asc_ci_list_products",
             description: """
                 List Xcode Cloud products (one per app with Xcode Cloud configured). \
                 Optionally filter to a single App Store Connect app id.
                 """,
-            inputSchema: .object([
-                "type": .string("object"),
-                "properties": .object([
-                    "app_id": .object([
-                        "type": .string("string"),
-                        "description": .string("App Store Connect app id to filter by (optional)."),
-                    ])
-                ]),
-            ])
-        ),
-        Tool(
+            arguments: [
+                .string("app_id", "App Store Connect app id to filter by (optional).")
+            ]
+        ) { args, makeClient in
+            try json(await makeClient().ciProducts(appID: args.string("app_id")))
+        },
+
+        ToolSpec(
             name: "asc_ci_list_workflows",
             description: "List the Xcode Cloud workflows for a product.",
-            inputSchema: .object([
-                "type": .string("object"),
-                "properties": .object([
-                    "product_id": .object([
-                        "type": .string("string"),
-                        "description": .string("Xcode Cloud product id (from asc_ci_list_products)."),
-                    ])
-                ]),
-                "required": .array([.string("product_id")]),
-            ])
-        ),
-        Tool(
+            arguments: [
+                .string("product_id", "Xcode Cloud product id (from asc_ci_list_products).", required: true)
+            ]
+        ) { args, makeClient in
+            try json(await makeClient().ciWorkflows(productID: args.require("product_id")))
+        },
+
+        ToolSpec(
             name: "asc_ci_list_build_runs",
             description: "List recent build runs for a workflow, newest first.",
-            inputSchema: .object([
-                "type": .string("object"),
-                "properties": .object([
-                    "workflow_id": .object([
-                        "type": .string("string"),
-                        "description": .string("Xcode Cloud workflow id (from asc_ci_list_workflows)."),
-                    ]),
-                    "limit": .object([
-                        "type": .string("integer"),
-                        "description": .string("Max build runs to return (default 20)."),
-                    ]),
-                    "failed_only": .object([
-                        "type": .string("boolean"),
-                        "description": .string(
-                            "When true, return only runs whose completionStatus is FAILED/ERRORED/INVALID "
-                                + "(recent runs are over-fetched and filtered client-side; 'limit' still caps the result). "
-                                + "Use this to skip past long stretches of green builds."),
-                    ]),
-                ]),
-                "required": .array([.string("workflow_id")]),
-            ])
-        ),
-        Tool(
+            arguments: [
+                .string("workflow_id", "Xcode Cloud workflow id (from asc_ci_list_workflows).", required: true),
+                .integer("limit", "Max build runs to return (default 20)."),
+                .boolean(
+                    "failed_only",
+                    "When true, return only runs whose completionStatus is FAILED/ERRORED/INVALID "
+                        + "(recent runs are over-fetched and filtered client-side; 'limit' still caps the result). "
+                        + "Use this to skip past long stretches of green builds."
+                ),
+            ]
+        ) { args, makeClient in
+            try json(
+                await makeClient().ciBuildRuns(
+                    workflowID: args.require("workflow_id"),
+                    limit: args.int("limit", default: 20),
+                    failedOnly: args.bool("failed_only")
+                ))
+        },
+
+        ToolSpec(
             name: "asc_ci_list_test_plans",
             description: """
                 List the test plans a workflow runs, flattened from its TEST actions: \
@@ -77,96 +70,78 @@ enum CITools {
                 and the test-plan names. Use this to diagnose test-target routing (e.g. which \
                 .xctestplan Xcode Cloud actually executed).
                 """,
-            inputSchema: .object([
-                "type": .string("object"),
-                "properties": .object([
-                    "workflow_id": .object([
-                        "type": .string("string"),
-                        "description": .string("Xcode Cloud workflow id (from asc_ci_list_workflows)."),
-                    ])
-                ]),
-                "required": .array([.string("workflow_id")]),
-            ])
-        ),
-        Tool(
+            arguments: [
+                .string("workflow_id", "Xcode Cloud workflow id (from asc_ci_list_workflows).", required: true)
+            ]
+        ) { args, makeClient in
+            try json(await makeClient().ciTestPlans(workflowID: args.require("workflow_id")))
+        },
+
+        ToolSpec(
             name: "asc_ci_get_build_run",
             description: "Fetch a build run plus its actions (build/analyze/test/archive steps) with issue counts.",
-            inputSchema: .object([
-                "type": .string("object"),
-                "properties": .object([
-                    "build_run_id": .object([
-                        "type": .string("string"),
-                        "description": .string("Xcode Cloud build run id."),
-                    ])
-                ]),
-                "required": .array([.string("build_run_id")]),
-            ])
-        ),
-        Tool(
+            arguments: [
+                .string("build_run_id", "Xcode Cloud build run id.", required: true)
+            ]
+        ) { args, makeClient in
+            let client = try makeClient()
+            let id = try args.require("build_run_id")
+            async let run = client.ciBuildRun(id: id)
+            async let actions = client.ciBuildActions(buildRunID: id)
+            return try json(BuildRunDetail(run: try await run.data, actions: try await actions.data))
+        },
+
+        ToolSpec(
             name: "asc_ci_get_issues",
             description: "List the issues (errors, warnings, analyzer findings) for one build action.",
-            inputSchema: .object([
-                "type": .string("object"),
-                "properties": .object([
-                    "build_action_id": .object([
-                        "type": .string("string"),
-                        "description": .string("Xcode Cloud build action id (from asc_ci_get_build_run)."),
-                    ])
-                ]),
-                "required": .array([.string("build_action_id")]),
-            ])
-        ),
-        Tool(
+            arguments: [
+                .string("build_action_id", "Xcode Cloud build action id (from asc_ci_get_build_run).", required: true)
+            ]
+        ) { args, makeClient in
+            try json(await makeClient().ciIssues(buildActionID: args.require("build_action_id")))
+        },
+
+        ToolSpec(
             name: "asc_ci_get_test_results",
             description: "List the test results for one build action.",
-            inputSchema: .object([
-                "type": .string("object"),
-                "properties": .object([
-                    "build_action_id": .object([
-                        "type": .string("string"),
-                        "description": .string("Xcode Cloud build action id."),
-                    ])
-                ]),
-                "required": .array([.string("build_action_id")]),
-            ])
-        ),
-        Tool(
+            arguments: [
+                .string("build_action_id", "Xcode Cloud build action id.", required: true)
+            ]
+        ) { args, makeClient in
+            try json(await makeClient().ciTestResults(buildActionID: args.require("build_action_id")))
+        },
+
+        ToolSpec(
             name: "asc_ci_get_artifacts",
-            description: "List downloadable artifacts (log bundle, xcresult, products) for one build action, with signed URLs.",
-            inputSchema: .object([
-                "type": .string("object"),
-                "properties": .object([
-                    "build_action_id": .object([
-                        "type": .string("string"),
-                        "description": .string("Xcode Cloud build action id."),
-                    ])
-                ]),
-                "required": .array([.string("build_action_id")]),
-            ])
-        ),
-        Tool(
+            description:
+                "List downloadable artifacts (log bundle, xcresult, products) for one build action, with signed URLs.",
+            arguments: [
+                .string("build_action_id", "Xcode Cloud build action id.", required: true)
+            ]
+        ) { args, makeClient in
+            try json(await makeClient().ciArtifacts(buildActionID: args.require("build_action_id")))
+        },
+
+        ToolSpec(
             name: "asc_ci_failure_report",
             description: """
                 Aggregate everything about a failed build run into one payload: for every \
                 non-succeeded action, its issues (with file/line), failed tests, and artifact \
                 download URLs. Use this to reason about what broke without further round-trips.
                 """,
-            inputSchema: .object([
-                "type": .string("object"),
-                "properties": .object([
-                    "build_run_id": .object([
-                        "type": .string("string"),
-                        "description": .string("Xcode Cloud build run id."),
-                    ]),
-                    "workflow_name": .object([
-                        "type": .string("string"),
-                        "description": .string("Optional workflow name to embed for context."),
-                    ]),
-                ]),
-                "required": .array([.string("build_run_id")]),
-            ])
-        ),
-        Tool(
+            arguments: [
+                .string("build_run_id", "Xcode Cloud build run id.", required: true),
+                .string("workflow_name", "Optional workflow name to embed for context."),
+            ]
+        ) { args, makeClient in
+            try json(
+                await makeClient().ciFailureReport(
+                    buildRunID: args.require("build_run_id"),
+                    workflowName: args.string("workflow_name")
+                ))
+        },
+
+        ToolSpec(
             name: "asc_ci_failure_report_with_logs",
             description: """
                 Like asc_ci_failure_report, but also downloads every failed action's text-log \
@@ -174,22 +149,19 @@ enum CITools {
                 failures, code-signing errors, per-test failures) with file/line where available. \
                 Binary artifacts (xcresult, zipped log bundles) are listed under skippedArtifacts.
                 """,
-            inputSchema: .object([
-                "type": .string("object"),
-                "properties": .object([
-                    "build_run_id": .object([
-                        "type": .string("string"),
-                        "description": .string("Xcode Cloud build run id."),
-                    ]),
-                    "workflow_name": .object([
-                        "type": .string("string"),
-                        "description": .string("Optional workflow name to embed for context."),
-                    ]),
-                ]),
-                "required": .array([.string("build_run_id")]),
-            ])
-        ),
-        Tool(
+            arguments: [
+                .string("build_run_id", "Xcode Cloud build run id.", required: true),
+                .string("workflow_name", "Optional workflow name to embed for context."),
+            ]
+        ) { args, makeClient in
+            try json(
+                await makeClient().ciFailureReportWithLogs(
+                    buildRunID: args.require("build_run_id"),
+                    workflowName: args.string("workflow_name")
+                ))
+        },
+
+        ToolSpec(
             name: "asc_ci_latest_failure",
             description: """
                 Triage shortcut. Given an app id, product id, or workflow id, find the \
@@ -201,29 +173,24 @@ enum CITools {
                 For parsed log text, feed the returned build_run_id to \
                 asc_ci_failure_report_with_logs.
                 """,
-            inputSchema: .object([
-                "type": .string("object"),
-                "properties": .object([
-                    "workflow_id": .object([
-                        "type": .string("string"),
-                        "description": .string(
-                            "Xcode Cloud workflow id — scan just this workflow (most specific)."),
-                    ]),
-                    "product_id": .object([
-                        "type": .string("string"),
-                        "description": .string(
-                            "Xcode Cloud product id — scan every workflow of this product."),
-                    ]),
-                    "app_id": .object([
-                        "type": .string("string"),
-                        "description": .string(
-                            "App Store Connect app id — scan every workflow of every Xcode Cloud "
-                                + "product of this app."),
-                    ]),
-                ]),
-            ])
-        ),
-        Tool(
+            arguments: [
+                .string("workflow_id", "Xcode Cloud workflow id — scan just this workflow (most specific)."),
+                .string("product_id", "Xcode Cloud product id — scan every workflow of this product."),
+                .string(
+                    "app_id",
+                    "App Store Connect app id — scan every workflow of every Xcode Cloud product of this app."
+                ),
+            ]
+        ) { args, makeClient in
+            try json(
+                await makeClient().ciLatestFailureReport(
+                    workflowID: args.string("workflow_id"),
+                    productID: args.string("product_id"),
+                    appID: args.string("app_id")
+                ))
+        },
+
+        ToolSpec(
             name: "asc_ci_analyze_log",
             description: """
                 Parse raw CI log text (or a downloaded text artifact) into structured findings: \
@@ -231,21 +198,19 @@ enum CITools {
                 test failures, each with file/line when present. Provide either 'text' or \
                 'download_url' (a signed URL from asc_ci_get_artifacts / asc_ci_failure_report).
                 """,
-            inputSchema: .object([
-                "type": .string("object"),
-                "properties": .object([
-                    "text": .object([
-                        "type": .string("string"),
-                        "description": .string("Raw log text to analyze."),
-                    ]),
-                    "download_url": .object([
-                        "type": .string("string"),
-                        "description": .string("Signed artifact URL to download and analyze as text."),
-                    ]),
-                ]),
-            ])
-        ),
-        Tool(
+            arguments: [
+                .string("text", "Raw log text to analyze."),
+                .string("download_url", "Signed artifact URL to download and analyze as text."),
+            ]
+        ) { args, makeClient in
+            if let text = args.string("text") {
+                return try json(CILogParser().parse(text))
+            }
+            let downloadURL = try args.require("download_url")
+            return try json(await makeClient().analyzeArtifactLog(from: downloadURL))
+        },
+
+        ToolSpec(
             name: "asc_submission_status",
             description: """
                 Diagnose where an app's latest App Store version stands in review: the version's \
@@ -253,18 +218,22 @@ enum CITools {
                 review submission state, per-item outcomes, whether the developer needs to act, and \
                 a plain-language explanation of the likely next step.
                 """,
-            inputSchema: .object([
-                "type": .string("object"),
-                "properties": .object([
-                    "bundle_id": .object([
-                        "type": .string("string"),
-                        "description": .string("The app's bundle identifier (e.g. com.example.app)."),
-                    ])
-                ]),
-                "required": .array([.string("bundle_id")]),
-            ])
-        ),
+            arguments: [
+                .string("bundle_id", "The app's bundle identifier (e.g. com.example.app).", required: true)
+            ]
+        ) { args, makeClient in
+            let service = AppStoreSubmissionService(client: try makeClient())
+            return try json(await service.status(bundleID: args.require("bundle_id")))
+        },
     ]
+
+    /// The tools advertised to the MCP host.
+    static let all: [Tool] = specs.map(\.tool)
+
+    /// Specs keyed by name, for dispatch.
+    private static let specsByName: [String: ToolSpec] = Dictionary(
+        uniqueKeysWithValues: specs.map { ($0.name, $0) }
+    )
 
     // MARK: - Dispatch
 
@@ -295,7 +264,19 @@ enum CITools {
             + "(\(status.remaining)/\(status.limit) requests left this hour). "
             + "Requests pause automatically at \(Int((status.throttleThreshold * 100).rounded()))% — "
             + "consider narrowing further calls."
-        return .init(content: result.content + [.text(hint)], isError: result.isError)
+        return .init(content: result.content + [.plainText(hint)], isError: result.isError)
+    }
+
+    /// Looks a tool up by name and runs its handler.
+    static func dispatch(
+        name: String,
+        arguments: [String: Value],
+        makeClient: ClientProvider
+    ) async throws -> CallTool.Result {
+        guard let spec = specsByName[name] else {
+            return .init(content: [.plainText("Unknown tool: \(name)")], isError: true)
+        }
+        return try await spec.handler(ToolArguments(arguments), makeClient)
     }
 
     /// Holds the `RateLimiter` of the client the current call constructed, if any.
@@ -314,100 +295,6 @@ enum CITools {
             lock.lock()
             defer { lock.unlock() }
             return limiter
-        }
-    }
-
-    static func dispatch(
-        name: String,
-        arguments: [String: Value],
-        makeClient: ClientProvider
-    ) async throws -> CallTool.Result {
-        switch name {
-        case "asc_ci_list_products":
-            let client = try makeClient()
-            let appID = arguments["app_id"]?.stringValue
-            return try json(await client.ciProducts(appID: appID))
-
-        case "asc_ci_list_workflows":
-            let client = try makeClient()
-            let productID = try require(arguments, "product_id")
-            return try json(await client.ciWorkflows(productID: productID))
-
-        case "asc_ci_list_build_runs":
-            let client = try makeClient()
-            let workflowID = try require(arguments, "workflow_id")
-            let limit = arguments["limit"]?.intValue ?? 20
-            let failedOnly =
-                arguments["failed_only"]?.boolValue
-                ?? (arguments["failed_only"]?.stringValue == "true")
-            return try json(
-                await client.ciBuildRuns(workflowID: workflowID, limit: limit, failedOnly: failedOnly))
-
-        case "asc_ci_list_test_plans":
-            let client = try makeClient()
-            let workflowID = try require(arguments, "workflow_id")
-            return try json(await client.ciTestPlans(workflowID: workflowID))
-
-        case "asc_ci_get_build_run":
-            let client = try makeClient()
-            let id = try require(arguments, "build_run_id")
-            async let run = client.ciBuildRun(id: id)
-            async let actions = client.ciBuildActions(buildRunID: id)
-            let payload = BuildRunDetail(run: try await run.data, actions: try await actions.data)
-            return try json(payload)
-
-        case "asc_ci_get_issues":
-            let client = try makeClient()
-            let id = try require(arguments, "build_action_id")
-            return try json(await client.ciIssues(buildActionID: id))
-
-        case "asc_ci_get_test_results":
-            let client = try makeClient()
-            let id = try require(arguments, "build_action_id")
-            return try json(await client.ciTestResults(buildActionID: id))
-
-        case "asc_ci_get_artifacts":
-            let client = try makeClient()
-            let id = try require(arguments, "build_action_id")
-            return try json(await client.ciArtifacts(buildActionID: id))
-
-        case "asc_ci_failure_report":
-            let client = try makeClient()
-            let id = try require(arguments, "build_run_id")
-            let workflowName = arguments["workflow_name"]?.stringValue
-            return try json(await client.ciFailureReport(buildRunID: id, workflowName: workflowName))
-
-        case "asc_ci_failure_report_with_logs":
-            let client = try makeClient()
-            let id = try require(arguments, "build_run_id")
-            let workflowName = arguments["workflow_name"]?.stringValue
-            return try json(await client.ciFailureReportWithLogs(buildRunID: id, workflowName: workflowName))
-
-        case "asc_ci_latest_failure":
-            let client = try makeClient()
-            return try json(
-                await client.ciLatestFailureReport(
-                    workflowID: arguments["workflow_id"]?.stringValue,
-                    productID: arguments["product_id"]?.stringValue,
-                    appID: arguments["app_id"]?.stringValue
-                ))
-
-        case "asc_ci_analyze_log":
-            if let text = arguments["text"]?.stringValue, !text.isEmpty {
-                return try json(CILogParser().parse(text))
-            }
-            let downloadURL = try require(arguments, "download_url")
-            let client = try makeClient()
-            return try json(await client.analyzeArtifactLog(from: downloadURL))
-
-        case "asc_submission_status":
-            let client = try makeClient()
-            let bundleID = try require(arguments, "bundle_id")
-            let service = AppStoreSubmissionService(client: client)
-            return try json(await service.status(bundleID: bundleID))
-
-        default:
-            return .init(content: [.text("Unknown tool: \(name)")], isError: true)
         }
     }
 
@@ -450,17 +337,10 @@ enum CITools {
         return AppStoreConnectClient(credentials: credentials)
     }
 
-    static func require(_ arguments: [String: Value], _ key: String) throws -> String {
-        guard let value = arguments[key]?.stringValue, !value.isEmpty else {
-            throw ASCError.invalidConfiguration(reason: "Missing required argument '\(key)'.")
-        }
-        return value
-    }
-
     static func json<T: Encodable>(_ value: T) throws -> CallTool.Result {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         let data = try encoder.encode(value)
-        return .init(content: [.text(String(decoding: data, as: UTF8.self))], isError: false)
+        return .init(content: [.plainText(String(decoding: data, as: UTF8.self))], isError: false)
     }
 }

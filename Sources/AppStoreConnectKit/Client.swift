@@ -86,13 +86,12 @@ public actor AppStoreConnectClient {
         self.jwtGenerator = JWTGenerator(keyID: keyID, issuerID: issuerID, privateKeyData: privateKeyData)
         self.rateLimiter = RateLimiter()
 
-        let dec = JSONDecoder()
-        dec.keyDecodingStrategy = .convertFromSnakeCase
-        self.decoder = dec
-
-        let enc = JSONEncoder()
-        enc.keyEncodingStrategy = .convertToSnakeCase
-        self.encoder = enc
+        // App Store Connect is camelCase on the wire in *both* directions
+        // (`bundleId`, `versionString`, `whatsNew`, `appStoreVersion`, …), so no key
+        // conversion strategy is applied. `.convertToSnakeCase` in particular silently
+        // corrupted every POST/PATCH body — Apple ignores `version_string`.
+        self.decoder = JSONDecoder()
+        self.encoder = JSONEncoder()
     }
 
     // MARK: - Generic REST
@@ -110,6 +109,50 @@ public actor AppStoreConnectClient {
     ) async throws -> T {
         let request = try await buildRequest(method: "GET", path: path, query: query, body: nil as EmptyBody?)
         return try await perform(request)
+    }
+
+    /// The largest page size App Store Connect accepts on a list endpoint.
+    public static let maxPageSize = 200
+
+    /// Perform a GET against a list endpoint and follow `links.next` until either the
+    /// collection is exhausted or `limit` resources have been collected.
+    ///
+    /// A single `get` silently returns one page, so a workflow with more issues than
+    /// the page size would lose the rest without any signal. This walks the pages
+    /// instead, and the returned envelope's `links` are those of the final page —
+    /// a non-nil `next` there means `limit` cut the walk short.
+    ///
+    /// - Parameters:
+    ///   - path: The API path (e.g. `"/v1/ciProducts"`).
+    ///   - query: Query parameters. Any `limit` key is replaced by the page size.
+    ///   - limit: Maximum resources to return across all pages.
+    /// - Returns: The accumulated resources, capped at `limit`.
+    public func getAll<T: Codable & Sendable>(
+        _ path: String,
+        query: [String: String] = [:],
+        limit: Int
+    ) async throws -> ASCListResponse<T> {
+        guard limit > 0 else { return ASCListResponse(data: []) }
+
+        var query = query
+        query["limit"] = String(min(limit, Self.maxPageSize))
+
+        var collected: [T] = []
+        var page: ASCListResponse<T> = try await get(path, query: query)
+
+        while true {
+            collected += page.data
+            guard collected.count < limit,
+                let next = page.links?.next,
+                let nextURL = URL(string: next)
+            else { break }
+
+            let request = try await buildRequest(url: nextURL, method: "GET", body: nil as EmptyBody?)
+            page = try await perform(request)
+            guard !page.data.isEmpty else { break }
+        }
+
+        return ASCListResponse(data: Array(collected.prefix(limit)), links: page.links)
     }
 
     /// Perform a POST request with a body and decode the response.
@@ -181,7 +224,16 @@ public actor AppStoreConnectClient {
         guard let url = components?.url else {
             throw ASCError.invalidConfiguration(reason: "Invalid URL for path: \(path)")
         }
+        return try await buildRequest(url: url, method: method, body: body)
+    }
 
+    /// Builds an authorized request against an already-resolved URL — used for
+    /// pagination, where the `links.next` URL arrives fully formed.
+    private func buildRequest<Body: Encodable>(
+        url: URL,
+        method: String,
+        body: Body?
+    ) async throws -> URLRequest {
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Accept")

@@ -15,6 +15,8 @@ Two products, both public-facing:
 > `AppStoreConnectKit` is consumed by [ShipItSwifty](https://github.com/maniramezan/ShipItSwifty)
 > as its App Store Connect layer.
 
+📖 **[API documentation](https://maniramezan.github.io/app-store-connect-mcp/)** (DocC, published from `main`).
+
 ## Install (library)
 
 ```swift
@@ -35,6 +37,62 @@ let client = AppStoreConnectClient(
 )
 let report = try await client.ciFailureReport(buildRunID: "…")
 ```
+
+### Library API
+
+`AppStoreConnectClient` is an actor that owns JWT minting, rate-limit backoff, and
+the REST plumbing. On top of the generic `get` / `post` / `patch` it offers:
+
+| Area | Entry points |
+|---|---|
+| **Xcode Cloud (read)** | `ciProducts`, `ciWorkflows`, `ciWorkflow(id:)`, `ciBuildRuns(workflowID:limit:failedOnly:)`, `ciBuildRun(id:)`, `ciBuildActions`, `ciIssues`, `ciTestResults`, `ciArtifacts`, `ciTestPlans(workflowID:)` |
+| **Aggregated diagnostics** | `ciFailureReport(buildRunID:workflowName:)`, `ciFailureReportWithLogs(…)`, `ciLatestFailureReport(workflowID:productID:appID:)` |
+| **Artifacts & logs** | `downloadArtifact(from:)`, `analyzeArtifactLog(from:parser:)`, `CILogParser` |
+| **Release management** | `AppStoreReleaseService` — see below |
+| **Review diagnostics** | `AppStoreSubmissionService.status(bundleID:)` |
+| **IPA upload** (macOS) | `IPAUploadService.uploadIPA(at:bundleID:credentials:shell:)` |
+
+#### `AppStoreReleaseService`
+
+Write operations against an app's App Store listing. All three resolve (or create)
+the latest `appStoreVersions` record for the bundle id first.
+
+```swift
+let service = AppStoreReleaseService(client: client)
+
+// Pull every locale's metadata into <dir>/<locale>/{name,subtitle,description,keywords,release_notes}.txt
+try await service.pullMetadata(bundleID: "com.example.app", directory: "./metadata")
+
+// Push those files back up (upserts appInfoLocalizations + appStoreVersionLocalizations).
+try await service.pushMetadata(bundleID: "com.example.app", directory: "./metadata") {
+    "1.4.0"  // called only if a new App Store version must be created
+}
+
+// Set the release type, optionally add a phased release, and create a review submission.
+let result = try await service.submitForReview(
+    bundleID: "com.example.app",
+    automaticRelease: true,
+    phasedRelease: false,
+    resolveVersionString: { "1.4.0" }
+)
+```
+
+#### `IPAUploadService` (macOS only)
+
+`/v1/builds` has no `CREATE`, so uploads go through `xcrun altool --upload-app`.
+`altool` reads the signing key from a fixed location, so **this service writes your
+`.p8` to `~/.appstoreconnect/private_keys/AuthKey_<KEY_ID>.p8`** (0700 dir, 0600 file)
+for the duration of the upload and removes it afterwards — unless a key was already
+there, in which case it is left untouched. After `altool` exits, the service extracts
+`CFBundleVersion` from the IPA and polls `/v1/builds` until the new build appears.
+
+#### Pagination
+
+List endpoints return one page at a time. The typed `ci*` helpers use
+`getAll(_:query:limit:)`, which follows `links.next` until either the collection is
+exhausted or `limit` resources have been collected (page size is capped at Apple's
+maximum of 200). If the returned envelope's `links.next` is non-nil, `limit` cut the
+walk short and more resources exist.
 
 ## MCP server
 
@@ -78,6 +136,16 @@ Set these environment variables (same names as `altool` / Fastlane):
 
 The server does no analysis of its own beyond normalization (`CIFailureReport`, `CILatestFailure`, `CILogParser`, `AppStoreSubmissionService`) — the calling agent reasons over the data. When a response leaves the App Store Connect hourly rate limit within 10 points of its throttle threshold, an extra text block is appended warning that further calls may stall.
 
+Each tool is one `ToolSpec` that carries both its JSON Schema and its handler, so the
+advertised catalog and the dispatcher cannot drift apart; adding a tool means adding
+one entry to `CITools.specs`.
+
+**A note on "failed":** `failed_only` and `asc_ci_latest_failure` treat a *run* as
+failed when its `completionStatus` is `FAILED`, `ERRORED`, or `INVALID` — a run
+someone canceled by hand is not a red build. The failure reports additionally collect
+`CANCELED` *actions*, because Xcode Cloud cancels an action's siblings when one
+breaks and those still carry the issues that explain it.
+
 ### Run it
 
 ```bash
@@ -111,6 +179,15 @@ export ASC_KEY_ID=… ASC_ISSUER_ID=… ASC_PRIVATE_KEY_PATH=/path/AuthKey_XXXX.
 swift build
 swift test --enable-code-coverage --no-parallel
 swift-format lint -r -s --configuration .swift-format Sources Tests
+```
+
+Build the documentation locally:
+
+```bash
+swift package --allow-writing-to-directory ./docs generate-documentation \
+    --target AppStoreConnectKit --disable-indexing \
+    --transform-for-static-hosting --hosting-base-path app-store-connect-mcp \
+    --output-path ./docs
 ```
 
 ### Coverage

@@ -52,6 +52,32 @@ struct CILogParserTests {
         #expect(analysis.findings.contains { $0.kind == .fatalError })
     }
 
+    @Test("Informational code-signing output is not reported as an error")
+    func benignCodeSigningLinesAreIgnored() {
+        let log = """
+            Code Signing Identity = Apple Development
+            Provisioning profile "Example Dev" (matched)
+            """
+        let analysis = CILogParser().parse(log)
+        #expect(analysis.findings.isEmpty)
+    }
+
+    @Test("An unattributed error line is classified as generic, and still counts as an error")
+    func unattributedErrorIsGeneric() {
+        let analysis = CILogParser().parse("xcodebuild: error: something went sideways")
+        let finding = try! #require(analysis.findings.first)
+        #expect(finding.kind == .generic)
+        #expect(analysis.errors.count == 1)
+    }
+
+    @Test("A real ld failure is still a linker error")
+    func realLinkerErrorStillMatches() {
+        #expect(CILogParser().parse("ld: error: too many personality routines").findings.first?.kind == .linkerError)
+        #expect(
+            CILogParser().parse("  ld: error: framework not found Foo").findings.first?.kind == .linkerError
+        )
+    }
+
     @Test("Clean log yields no findings and a friendly summary")
     func cleanLog() {
         let analysis = CILogParser().parse("Building...\n** BUILD SUCCEEDED **\n")
