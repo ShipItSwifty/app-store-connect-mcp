@@ -58,6 +58,9 @@ public struct AssetUploader: Sendable {
     ) async throws -> UploadCommit {
         logger.info("Starting upload for: \(fileURL.lastPathComponent) with \(reservation.operations.count) parts")
 
+        guard FileManager.default.fileExists(atPath: fileURL.path) else {
+            throw ASCError.uploadFailed(asset: fileURL.lastPathComponent, reason: "File not found at: \(fileURL.path)")
+        }
         _ = try fileSize(at: fileURL)
         var completedParts = 0
 

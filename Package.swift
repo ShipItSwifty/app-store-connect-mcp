@@ -63,6 +63,14 @@ let package = Package(
                 .product(name: "SwiftyShell", package: "SwiftyShell"),
             ]
         ),
+        .testTarget(
+            name: "AppStoreConnectMCPServerTests",
+            dependencies: [
+                "AppStoreConnectMCPServer",
+                "AppStoreConnectKit",
+                .product(name: "MCP", package: "swift-sdk"),
+            ]
+        ),
     ],
     swiftLanguageModes: [.v6]
 )

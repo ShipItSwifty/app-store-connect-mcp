@@ -28,6 +28,26 @@ enum MockHTTPResponse: Sendable {
     var body: Data { if case .response(_, _, let b) = self { return b } else { return Data() } }
 }
 
+/// Small lock-guarded box so mock handlers can record what they saw.
+final class LockedBox<Value>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: Value
+
+    init(_ value: Value) { self.storage = value }
+
+    var value: Value {
+        lock.lock()
+        defer { lock.unlock() }
+        return storage
+    }
+
+    func mutate(_ body: (inout Value) -> Void) {
+        lock.lock()
+        defer { lock.unlock() }
+        body(&storage)
+    }
+}
+
 /// Thread-safe FIFO queue of mock responses.
 final class ResponseQueue: @unchecked Sendable {
     private let lock = NSLock()
@@ -48,6 +68,45 @@ final class ResponseQueue: @unchecked Sendable {
 func makeClient(responses: [MockHTTPResponse]) -> AppStoreConnectClient {
     let queue = ResponseQueue(responses)
     let session = makeMockSession { _ in queue.next() }
+    return AppStoreConnectClient(
+        keyID: "KEY",
+        issuerID: "ISSUER",
+        privateKeyData: Data("placeholder".utf8),
+        session: session,
+        tokenProvider: { "test-token" }
+    )
+}
+
+/// Like `makeClient(responses:)` but records the `path` of every request the client
+/// makes into `observedPaths`, in order, so tests can assert which endpoints were hit.
+func makeClientRecording(
+    observedPaths: LockedBox<[String]>,
+    responses: [MockHTTPResponse]
+) -> AppStoreConnectClient {
+    let queue = ResponseQueue(responses)
+    let session = makeMockSession { request in
+        observedPaths.mutate { $0.append(request.url?.path ?? "") }
+        return queue.next()
+    }
+    return AppStoreConnectClient(
+        keyID: "KEY",
+        issuerID: "ISSUER",
+        privateKeyData: Data("placeholder".utf8),
+        session: session,
+        tokenProvider: { "test-token" }
+    )
+}
+
+/// Like `makeClient(responses:)` but records the HTTP method of every request.
+func makeClientRecording(
+    observedMethods: LockedBox<[String]>,
+    responses: [MockHTTPResponse]
+) -> AppStoreConnectClient {
+    let queue = ResponseQueue(responses)
+    let session = makeMockSession { request in
+        observedMethods.mutate { $0.append(request.httpMethod ?? "") }
+        return queue.next()
+    }
     return AppStoreConnectClient(
         keyID: "KEY",
         issuerID: "ISSUER",

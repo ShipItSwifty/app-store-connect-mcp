@@ -330,6 +330,41 @@ struct JWTGeneratorTests {
         #expect(parts.count == 3)
     }
 
+    @Test("cachedOrNewToken returns the same token on the second call (cache hit)")
+    func cachedOrNewTokenCaches() async throws {
+        let privateKey = P256.Signing.PrivateKey()
+        let generator = JWTGenerator(
+            keyID: "CACHE_KEY",
+            issuerID: "cache-issuer",
+            privateKeyData: Data(privateKey.pemRepresentation.utf8)
+        )
+        let first = try await generator.cachedOrNewToken()
+        let second = try await generator.cachedOrNewToken()
+        #expect(first == second, "a warm cache must return the identical token")
+        #expect(first.split(separator: ".").count == 3)
+    }
+
+    @Test("generateToken embeds a scope claim when provided")
+    func generateTokenWithScope() async throws {
+        let privateKey = P256.Signing.PrivateKey()
+        let generator = JWTGenerator(
+            keyID: "SCOPE_KEY",
+            issuerID: "scope-issuer",
+            privateKeyData: Data(privateKey.pemRepresentation.utf8)
+        )
+        let token = try await generator.generateToken(scope: ["GET /v1/apps"], lifetime: .seconds(300))
+        let payload = try jwtPayload(from: token)
+        #expect(payload["scope"] != nil)
+    }
+
+    @Test("generateToken surfaces ASCError.jwtGenerationFailed for a non-PEM key")
+    func generateTokenBadKey() async {
+        let generator = JWTGenerator(keyID: "K", issuerID: "I", privateKeyData: Data("not a pem".utf8))
+        await #expect(throws: ASCError.self) {
+            _ = try await generator.generateToken()
+        }
+    }
+
     @Test("generateToken loads .p8 file that has a UTF-8 BOM prepended")
     func generateTokenLoadsKeyWithBOM() async throws {
         let privateKey = P256.Signing.PrivateKey()

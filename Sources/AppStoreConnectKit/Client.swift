@@ -43,7 +43,9 @@ public actor AppStoreConnectClient {
     private let issuerID: String
     private let privateKeyData: Data
     private let serverURL: URL?
-    private let session: URLSession
+    /// The URL session used for outbound HTTP. Package-internal so sibling
+    /// extensions (e.g. artifact download) can reuse the configured session.
+    let session: URLSession
     private let tokenProvider: (@Sendable () async throws -> String)?
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder

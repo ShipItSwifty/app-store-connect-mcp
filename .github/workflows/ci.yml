@@ -52,6 +52,13 @@ jobs:
       - name: Test
         run: swift test --enable-code-coverage --no-parallel
 
+      - name: Coverage gate
+        env:
+          # Line-coverage floor. Raise this as coverage climbs; never lower it
+          # without a deliberate reason. Current: ~88%.
+          MIN_LINE_COVERAGE: "85"
+        run: scripts/coverage-gate.sh
+
       - name: Smoke test MCP binary
         run: |
           swift build --product app-store-connect-mcp

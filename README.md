@@ -58,8 +58,11 @@ Set these environment variables (same names as `altool` / Fastlane):
 | `asc_ci_get_test_results` | `build_action_id` | test results |
 | `asc_ci_get_artifacts` | `build_action_id` | log bundle / xcresult / product download URLs |
 | `asc_ci_failure_report` | `build_run_id`, `workflow_name?` | **one aggregated payload**: every failed action's issues, failed tests, and artifacts |
+| `asc_ci_failure_report_with_logs` | `build_run_id`, `workflow_name?` | `asc_ci_failure_report` plus each failed action's **text logs downloaded and parsed** into structured findings (compiler / linker / code-signing errors, test failures, with file + line); binary artifacts are listed under `skippedArtifacts` |
+| `asc_ci_analyze_log` | `text?` **or** `download_url?` | parse raw CI log text (or a downloaded text artifact) into structured findings by kind |
+| `asc_submission_status` | `bundle_id` | diagnose where the latest App Store version stands in review: version state (`REJECTED`, `METADATA_REJECTED`, `INVALID_BINARY`, `WAITING_FOR_REVIEW`, …), review-submission state, per-item outcomes, whether the developer must act, and a plain-language next step |
 
-The server does no analysis of its own — the calling agent reasons over the data.
+The server does no analysis of its own beyond normalization (`CIFailureReport`, `CILogParser`, `AppStoreSubmissionService`) — the calling agent reasons over the data.
 
 ### Run it
 
@@ -92,9 +95,22 @@ export ASC_KEY_ID=… ASC_ISSUER_ID=… ASC_PRIVATE_KEY_PATH=/path/AuthKey_XXXX.
 
 ```bash
 swift build
-swift test
+swift test --enable-code-coverage --no-parallel
 swift-format lint -r -s --configuration .swift-format Sources Tests
 ```
+
+### Coverage
+
+CI runs `scripts/coverage-gate.sh` after the macOS test job and **fails the build if
+line coverage drops below the floor** (`MIN_LINE_COVERAGE`, currently `85`; actual is
+~88%). Run it locally the same way:
+
+```bash
+swift test --enable-code-coverage --no-parallel
+MIN_LINE_COVERAGE=85 scripts/coverage-gate.sh
+```
+
+Raise the floor as coverage climbs; don't lower it without a deliberate reason.
 
 ## Releasing
 

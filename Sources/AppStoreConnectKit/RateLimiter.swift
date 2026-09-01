@@ -67,6 +67,20 @@ public actor RateLimiter {
         parse(header: header)
     }
 
+    /// The most recently parsed `(limit, remaining)` pair, or `nil` before any
+    /// response headers have been seen. Package-internal — used by tests to assert
+    /// header parsing without waiting on a real backoff sleep.
+    var snapshot: (limit: Int, remaining: Int)? {
+        guard let hourlyLimit, let hourlyRemaining else { return nil }
+        return (hourlyLimit, hourlyRemaining)
+    }
+
+    /// Fraction of the hourly limit currently consumed (`0...1`), or `nil` if unknown.
+    var usageFraction: Double? {
+        guard let hourlyLimit, let hourlyRemaining, hourlyLimit > 0 else { return nil }
+        return Double(hourlyLimit - hourlyRemaining) / Double(hourlyLimit)
+    }
+
     // MARK: - Private
 
     private func parse(header: String) {

@@ -2,8 +2,15 @@ import AppStoreConnectKit
 import Foundation
 import MCP
 
-/// The Xcode Cloud read tools exposed by this MCP server.
+/// The App Store Connect read/diagnostic tools exposed by this MCP server.
+///
+/// Every tool is read-only. The server performs no analysis of its own beyond the
+/// normalization done in `AppStoreConnectKit` (`CIFailureReport`, `CILogParser`,
+/// `AppStoreSubmissionService`); the MCP host agent does the reasoning.
 enum CITools {
+    /// How the dispatcher obtains an `AppStoreConnectClient`. Overridable in tests.
+    typealias ClientProvider = @Sendable () throws -> AppStoreConnectClient
+
     // MARK: - Tool catalog
 
     static let all: [Tool] = [
@@ -133,28 +140,98 @@ enum CITools {
                 "required": .array([.string("build_run_id")]),
             ])
         ),
+        Tool(
+            name: "asc_ci_failure_report_with_logs",
+            description: """
+                Like asc_ci_failure_report, but also downloads every failed action's text-log \
+                artifacts and parses them into structured findings (compiler errors, linker \
+                failures, code-signing errors, per-test failures) with file/line where available. \
+                Binary artifacts (xcresult, zipped log bundles) are listed under skippedArtifacts.
+                """,
+            inputSchema: .object([
+                "type": .string("object"),
+                "properties": .object([
+                    "build_run_id": .object([
+                        "type": .string("string"),
+                        "description": .string("Xcode Cloud build run id."),
+                    ]),
+                    "workflow_name": .object([
+                        "type": .string("string"),
+                        "description": .string("Optional workflow name to embed for context."),
+                    ]),
+                ]),
+                "required": .array([.string("build_run_id")]),
+            ])
+        ),
+        Tool(
+            name: "asc_ci_analyze_log",
+            description: """
+                Parse raw CI log text (or a downloaded text artifact) into structured findings: \
+                compiler errors/warnings, linker errors, code-signing errors, fatal errors, and \
+                test failures, each with file/line when present. Provide either 'text' or \
+                'download_url' (a signed URL from asc_ci_get_artifacts / asc_ci_failure_report).
+                """,
+            inputSchema: .object([
+                "type": .string("object"),
+                "properties": .object([
+                    "text": .object([
+                        "type": .string("string"),
+                        "description": .string("Raw log text to analyze."),
+                    ]),
+                    "download_url": .object([
+                        "type": .string("string"),
+                        "description": .string("Signed artifact URL to download and analyze as text."),
+                    ]),
+                ]),
+            ])
+        ),
+        Tool(
+            name: "asc_submission_status",
+            description: """
+                Diagnose where an app's latest App Store version stands in review: the version's \
+                own state (REJECTED, METADATA_REJECTED, INVALID_BINARY, WAITING_FOR_REVIEW, …), the \
+                review submission state, per-item outcomes, whether the developer needs to act, and \
+                a plain-language explanation of the likely next step.
+                """,
+            inputSchema: .object([
+                "type": .string("object"),
+                "properties": .object([
+                    "bundle_id": .object([
+                        "type": .string("string"),
+                        "description": .string("The app's bundle identifier (e.g. com.example.app)."),
+                    ])
+                ]),
+                "required": .array([.string("bundle_id")]),
+            ])
+        ),
     ]
 
     // MARK: - Dispatch
 
-    static func call(name: String, arguments: [String: Value]) async throws -> CallTool.Result {
-        let client = try makeClient()
-
+    static func call(
+        name: String,
+        arguments: [String: Value],
+        makeClient: ClientProvider = CITools.defaultClient
+    ) async throws -> CallTool.Result {
         switch name {
         case "asc_ci_list_products":
+            let client = try makeClient()
             let appID = arguments["app_id"]?.stringValue
             return try json(await client.ciProducts(appID: appID))
 
         case "asc_ci_list_workflows":
+            let client = try makeClient()
             let productID = try require(arguments, "product_id")
             return try json(await client.ciWorkflows(productID: productID))
 
         case "asc_ci_list_build_runs":
+            let client = try makeClient()
             let workflowID = try require(arguments, "workflow_id")
             let limit = arguments["limit"]?.intValue ?? 20
             return try json(await client.ciBuildRuns(workflowID: workflowID, limit: limit))
 
         case "asc_ci_get_build_run":
+            let client = try makeClient()
             let id = try require(arguments, "build_run_id")
             async let run = client.ciBuildRun(id: id)
             async let actions = client.ciBuildActions(buildRunID: id)
@@ -162,21 +239,45 @@ enum CITools {
             return try json(payload)
 
         case "asc_ci_get_issues":
+            let client = try makeClient()
             let id = try require(arguments, "build_action_id")
             return try json(await client.ciIssues(buildActionID: id))
 
         case "asc_ci_get_test_results":
+            let client = try makeClient()
             let id = try require(arguments, "build_action_id")
             return try json(await client.ciTestResults(buildActionID: id))
 
         case "asc_ci_get_artifacts":
+            let client = try makeClient()
             let id = try require(arguments, "build_action_id")
             return try json(await client.ciArtifacts(buildActionID: id))
 
         case "asc_ci_failure_report":
+            let client = try makeClient()
             let id = try require(arguments, "build_run_id")
             let workflowName = arguments["workflow_name"]?.stringValue
             return try json(await client.ciFailureReport(buildRunID: id, workflowName: workflowName))
+
+        case "asc_ci_failure_report_with_logs":
+            let client = try makeClient()
+            let id = try require(arguments, "build_run_id")
+            let workflowName = arguments["workflow_name"]?.stringValue
+            return try json(await client.ciFailureReportWithLogs(buildRunID: id, workflowName: workflowName))
+
+        case "asc_ci_analyze_log":
+            if let text = arguments["text"]?.stringValue, !text.isEmpty {
+                return try json(CILogParser().parse(text))
+            }
+            let downloadURL = try require(arguments, "download_url")
+            let client = try makeClient()
+            return try json(await client.analyzeArtifactLog(from: downloadURL))
+
+        case "asc_submission_status":
+            let client = try makeClient()
+            let bundleID = try require(arguments, "bundle_id")
+            let service = AppStoreSubmissionService(client: client)
+            return try json(await service.status(bundleID: bundleID))
 
         default:
             return .init(content: [.text("Unknown tool: \(name)")], isError: true)
@@ -190,7 +291,7 @@ enum CITools {
         let actions: [CIBuildAction]
     }
 
-    private static func makeClient() throws -> AppStoreConnectClient {
+    static let defaultClient: ClientProvider = {
         guard let credentials = ASCCredentials.fromEnvironment() else {
             throw ASCError.invalidConfiguration(
                 reason: """
@@ -202,14 +303,14 @@ enum CITools {
         return AppStoreConnectClient(credentials: credentials)
     }
 
-    private static func require(_ arguments: [String: Value], _ key: String) throws -> String {
+    static func require(_ arguments: [String: Value], _ key: String) throws -> String {
         guard let value = arguments[key]?.stringValue, !value.isEmpty else {
             throw ASCError.invalidConfiguration(reason: "Missing required argument '\(key)'.")
         }
         return value
     }
 
-    private static func json<T: Encodable>(_ value: T) throws -> CallTool.Result {
+    static func json<T: Encodable>(_ value: T) throws -> CallTool.Result {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         let data = try encoder.encode(value)

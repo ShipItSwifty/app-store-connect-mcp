@@ -87,5 +87,63 @@ struct IPAUploadServiceTests {
         #expect(result.fileName == ipa.lastPathComponent)
         #expect(result.buildID == nil)
     }
+
+    @Test("altool success with resolveBuildID true resolves the app and polls for the build")
+    func altoolSuccessResolvesBuild() async throws {
+        let ipa = try makeTempIPA()
+        defer { try? FileManager.default.removeItem(at: ipa) }
+
+        let shell = ShellContext(
+            executor: MockExecutor { command, _ in
+                if command.description.contains("plutil") {
+                    return ShellOutput(stdout: "142\n", stderr: "", exitCode: 0)
+                }
+                return ShellOutput(stdout: "{}", stderr: "", exitCode: 0)
+            }
+        )
+        let mockClient = makeMockUploadClient([
+            uploadJSON(["data": [["id": "app-1", "attributes": ["bundleId": "com.example.app"]]]]),
+            uploadJSON(["data": [["id": "build-99", "attributes": ["version": "142"]]]]),
+        ])
+
+        let result = try await IPAUploadService(client: mockClient, pollMaxAttempts: 1, pollDelaySeconds: 0).uploadIPA(
+            at: ipa,
+            bundleID: "com.example.app",
+            credentials: credentials,
+            shell: shell,
+            resolveBuildID: true
+        )
+        #expect(result.appID == "app-1")
+        #expect(result.buildID == "build-99")
+    }
+
+    @Test("resolveBuildID true throws when the build never appears in App Store Connect")
+    func pollExhaustsWithoutBuild() async throws {
+        let ipa = try makeTempIPA()
+        defer { try? FileManager.default.removeItem(at: ipa) }
+
+        let shell = ShellContext(
+            executor: MockExecutor { command, _ in
+                if command.description.contains("plutil") {
+                    return ShellOutput(stdout: "142\n", stderr: "", exitCode: 0)
+                }
+                return ShellOutput(stdout: "{}", stderr: "", exitCode: 0)
+            }
+        )
+        let mockClient = makeMockUploadClient([
+            uploadJSON(["data": [["id": "app-1", "attributes": ["bundleId": "com.example.app"]]]]),
+            uploadJSON(["data": [String]()]),
+        ])
+
+        await #expect(throws: ASCError.self) {
+            _ = try await IPAUploadService(client: mockClient, pollMaxAttempts: 1, pollDelaySeconds: 0).uploadIPA(
+                at: ipa,
+                bundleID: "com.example.app",
+                credentials: credentials,
+                shell: shell,
+                resolveBuildID: true
+            )
+        }
+    }
 }
 #endif
