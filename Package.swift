@@ -55,6 +55,14 @@ let package = Package(
                 .product(name: "Logging", package: "swift-log"),
             ]
         ),
+        .testTarget(
+            name: "AppStoreConnectUploadKitTests",
+            dependencies: [
+                "AppStoreConnectUploadKit",
+                "AppStoreConnectKit",
+                .product(name: "SwiftyShell", package: "SwiftyShell"),
+            ]
+        ),
     ],
     swiftLanguageModes: [.v6]
 )
