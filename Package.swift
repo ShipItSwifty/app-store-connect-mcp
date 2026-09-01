@@ -16,7 +16,9 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-crypto", from: "4.4.0"),
-        .package(url: "https://github.com/vapor/jwt-kit", from: "5.4.0"),
+        // Pin to 5.4.x: jwt-kit >= 5.5 pulls in ML-DSA (post-quantum) code that
+        // needs a swift-crypto / toolchain newer than the stable CI images.
+        .package(url: "https://github.com/vapor/jwt-kit", .upToNextMinor(from: "5.4.0")),
         .package(url: "https://github.com/apple/swift-log", from: "1.12.0"),
         .package(url: "https://github.com/maniramezan/SwiftyShell.git", from: "0.5.0"),
         .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", from: "0.12.1"),
