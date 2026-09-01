@@ -3,7 +3,7 @@ import Testing
 
 @testable import AppStoreConnectKit
 
-@Suite("Xcode Cloud read API")
+@Suite("Xcode Cloud read API", .serialized)
 struct CIBuildAPITests {
     @Test("Decodes build runs newest-first list")
     func decodesBuildRuns() async throws {

@@ -3,7 +3,7 @@ import Testing
 
 @testable import AppStoreConnectKit
 
-@Suite("AppStoreConnectClient")
+@Suite("AppStoreConnectClient", .serialized)
 struct ClientTests {
     @Test("Decodes a list response envelope")
     func decodesListResponse() async throws {

@@ -42,7 +42,7 @@ jobs:
         run: swift --version
 
       - name: Test
-        run: swift test
+        run: swift test --no-parallel
 
       - name: Build arm64
         run: swift build -c release --product app-store-connect-mcp --arch arm64 --disable-sandbox
