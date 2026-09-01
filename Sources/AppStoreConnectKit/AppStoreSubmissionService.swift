@@ -39,6 +39,20 @@ public struct AppStoreSubmissionService: Sendable {
         public let needsDeveloperAction: Bool
         /// Plain-language explanation of the current state and the likely next step.
         public let diagnosis: String
+        /// Whether a pre-release build is attached to the latest version.
+        ///
+        /// `nil` when there is no latest version to inspect. A version stuck in
+        /// `PREPARE_FOR_SUBMISSION` with no build attached is a common "can't submit"
+        /// cause that the `reviewSubmissions` resource never surfaces.
+        public let buildAttached: Bool?
+        /// The build attached to the latest version, when one is attached.
+        public let attachedBuild: BuildInfo?
+        /// The newest build the app has for the latest version's `versionString`, if any.
+        ///
+        /// Populated only when no build is attached, so the caller can see whether a
+        /// valid candidate exists (and therefore that the blocker is the attachment
+        /// itself, not a missing build).
+        public let candidateBuild: BuildInfo?
 
         /// Creates a `SubmissionStatusReport`.
         public init(
@@ -48,7 +62,10 @@ public struct AppStoreSubmissionService: Sendable {
             reviewSubmission: ReviewSubmissionInfo?,
             items: [ReviewSubmissionItemInfo],
             needsDeveloperAction: Bool,
-            diagnosis: String
+            diagnosis: String,
+            buildAttached: Bool? = nil,
+            attachedBuild: BuildInfo? = nil,
+            candidateBuild: BuildInfo? = nil
         ) {
             self.appID = appID
             self.bundleID = bundleID
@@ -57,6 +74,27 @@ public struct AppStoreSubmissionService: Sendable {
             self.items = items
             self.needsDeveloperAction = needsDeveloperAction
             self.diagnosis = diagnosis
+            self.buildAttached = buildAttached
+            self.attachedBuild = attachedBuild
+            self.candidateBuild = candidateBuild
+        }
+
+        /// Minimal view of a `builds` resource.
+        public struct BuildInfo: Codable, Sendable {
+            public let id: String
+            /// The build (CFBundleVersion) string, e.g. `"142"`.
+            public let version: String?
+            /// `PROCESSING`, `VALID`, `FAILED`, `INVALID`.
+            public let processingState: String?
+            /// Whether the build has expired.
+            public let expired: Bool?
+
+            public init(id: String, version: String?, processingState: String?, expired: Bool?) {
+                self.id = id
+                self.version = version
+                self.processingState = processingState
+                self.expired = expired
+            }
         }
 
         /// Minimal view of an `appStoreVersions` resource.
@@ -118,7 +156,8 @@ public struct AppStoreSubmissionService: Sendable {
             "/v1/apps/\(app.id)/appStoreVersions",
             query: ["limit": "1"]
         )
-        let version = versionResp.data.first.map { resource in
+        let versionResource = versionResp.data.first
+        let version = versionResource.map { resource in
             SubmissionStatusReport.VersionInfo(
                 id: resource.id,
                 versionString: resource.attributes?.versionString,
@@ -128,11 +167,14 @@ public struct AppStoreSubmissionService: Sendable {
             )
         }
 
+        // `GET /v1/reviewSubmissions` does not accept a `sort` parameter — passing one is a
+        // hard 400 (`PARAMETER_ERROR.ILLEGAL`). Fetch a recent page unsorted and choose the
+        // latest submission client-side.
         let submissionResp: ASCListResponse<ReviewSubmissionResource> = try await client.get(
             "/v1/reviewSubmissions",
-            query: ["filter[app]": app.id, "limit": "1", "sort": "-submittedDate"]
+            query: ["filter[app]": app.id, "limit": "20"]
         )
-        let submissionResource = submissionResp.data.first
+        let submissionResource = Self.mostRecentSubmission(submissionResp.data)
         let submission = submissionResource.map { resource in
             SubmissionStatusReport.ReviewSubmissionInfo(
                 id: resource.id,
@@ -153,6 +195,26 @@ public struct AppStoreSubmissionService: Sendable {
             }
         }
 
+        // Is a build attached to the latest version? A version stuck in
+        // PREPARE_FOR_SUBMISSION with no build is a common "can't submit" cause that
+        // `reviewSubmissions` never surfaces. When nothing is attached, also look up the
+        // newest build for that version so the caller can tell "no build exists" from
+        // "a valid build exists but won't attach".
+        var buildAttached: Bool?
+        var attachedBuild: SubmissionStatusReport.BuildInfo?
+        var candidateBuild: SubmissionStatusReport.BuildInfo?
+        if let versionResource {
+            attachedBuild = try await Self.attachedBuild(client: client, versionID: versionResource.id)
+            buildAttached = attachedBuild != nil
+            if attachedBuild == nil, let versionString = versionResource.attributes?.versionString {
+                candidateBuild = try await Self.newestBuild(
+                    client: client,
+                    appID: app.id,
+                    versionString: versionString
+                )
+            }
+        }
+
         let needsAction = Self.needsDeveloperAction(
             versionState: version?.state,
             submissionState: submission?.state,
@@ -162,11 +224,13 @@ public struct AppStoreSubmissionService: Sendable {
             versionString: version?.versionString,
             versionState: version?.state,
             submissionState: submission?.state,
-            itemStates: items.compactMap(\.state)
+            itemStates: items.compactMap(\.state),
+            buildAttached: buildAttached,
+            candidateBuild: candidateBuild
         )
 
         logger.info(
-            "Submission status for '\(bundleID)': version=\(version?.state ?? "none") submission=\(submission?.state ?? "none")"
+            "Submission status for '\(bundleID)': version=\(version?.state ?? "none") submission=\(submission?.state ?? "none") buildAttached=\(buildAttached.map(String.init) ?? "n/a")"
         )
 
         return SubmissionStatusReport(
@@ -176,7 +240,10 @@ public struct AppStoreSubmissionService: Sendable {
             reviewSubmission: submission,
             items: items,
             needsDeveloperAction: needsAction,
-            diagnosis: diagnosis
+            diagnosis: diagnosis,
+            buildAttached: buildAttached,
+            attachedBuild: attachedBuild,
+            candidateBuild: candidateBuild
         )
     }
 
@@ -199,11 +266,37 @@ public struct AppStoreSubmissionService: Sendable {
         return false
     }
 
+    /// Picks the most recent review submission from an unsorted page.
+    ///
+    /// `GET /v1/reviewSubmissions` has no `sort` parameter, so the page comes back in an
+    /// arbitrary order. Order by `submittedDate` descending; a submission with no
+    /// `submittedDate` (still being assembled / not yet submitted) counts as the newest.
+    private static func mostRecentSubmission(
+        _ resources: [ReviewSubmissionResource]
+    ) -> ReviewSubmissionResource? {
+        resources.max { lhs, rhs in
+            submissionIsOlder(lhs, than: rhs)
+        }
+    }
+
+    private static func submissionIsOlder(
+        _ lhs: ReviewSubmissionResource,
+        than rhs: ReviewSubmissionResource
+    ) -> Bool {
+        switch (lhs.attributes?.submittedDate, rhs.attributes?.submittedDate) {
+        case (nil, _): return false
+        case (_, nil): return true
+        case (let lhsDate?, let rhsDate?): return lhsDate < rhsDate
+        }
+    }
+
     static func diagnose(
         versionString: String?,
         versionState: String?,
         submissionState: String?,
-        itemStates: [String]
+        itemStates: [String],
+        buildAttached: Bool? = nil,
+        candidateBuild: SubmissionStatusReport.BuildInfo? = nil
     ) -> String {
         let versionLabel = versionString.map { "Version \($0)" } ?? "The latest version"
         let vState = versionState?.uppercased() ?? ""
@@ -231,6 +324,28 @@ public struct AppStoreSubmissionService: Sendable {
         case ("PENDING_DEVELOPER_RELEASE", _):
             return "\(versionLabel) is APPROVED and PENDING_DEVELOPER_RELEASE — release it manually from App Store Connect when ready."
         case ("PREPARE_FOR_SUBMISSION", _), ("", ""):
+            if buildAttached == false {
+                let candidateNote: String
+                switch candidateBuild?.processingState?.uppercased() {
+                case "VALID":
+                    candidateNote =
+                        " Build \(candidateBuild?.version ?? "?") exists for this version and is VALID, so a "
+                        + "candidate is available — if it still won't attach in App Store Connect either, the cause is "
+                        + "usually outside the App Store Connect API: an incomplete App Privacy (data-collection) "
+                        + "section, a pending agreement in Agreements, Tax, and Banking, or unresolved export compliance."
+                case .some(let state):
+                    candidateNote =
+                        " The newest build for this version (\(candidateBuild?.version ?? "?")) is \(state), not VALID — "
+                        + "wait for processing to finish or upload a new build."
+                case nil:
+                    candidateNote =
+                        " No build has been uploaded for this version yet — archive and upload one from Xcode, wait for "
+                        + "it to finish processing, then attach it."
+                }
+                return
+                    "\(versionLabel) is in PREPARE_FOR_SUBMISSION with no build selected. Attach a processed build to "
+                    + "the version, finish the metadata, then create a review submission." + candidateNote
+            }
             return
                 "\(versionLabel) is still in PREPARE_FOR_SUBMISSION and has not been submitted. Finish the metadata, "
                 + "attach a build, and create a review submission."
@@ -257,6 +372,52 @@ public struct AppStoreSubmissionService: Sendable {
             )
         }
         return app
+    }
+
+    /// Returns the build attached to the given App Store version, or `nil` when none is set.
+    ///
+    /// `GET /v1/appStoreVersions/{id}/build` returns `{ "data": null }` (HTTP 200) when no
+    /// build is attached; some tenants answer 404 instead, which is treated the same way.
+    private static func attachedBuild(
+        client: AppStoreConnectClient,
+        versionID: String
+    ) async throws -> SubmissionStatusReport.BuildInfo? {
+        do {
+            let resp: SingleBuildEnvelope = try await client.get("/v1/appStoreVersions/\(versionID)/build")
+            return resp.data.map(Self.buildInfo)
+        } catch let ASCError.apiError(statusCode, _) where statusCode == 404 {
+            return nil
+        }
+    }
+
+    /// Returns the newest build the app has for a given marketing version string, if any.
+    ///
+    /// `GET /v1/builds` does support `sort`, so ask for the most recently uploaded build
+    /// filtered to this version's pre-release version.
+    private static func newestBuild(
+        client: AppStoreConnectClient,
+        appID: String,
+        versionString: String
+    ) async throws -> SubmissionStatusReport.BuildInfo? {
+        let resp: ASCListResponse<BuildResource> = try await client.get(
+            "/v1/builds",
+            query: [
+                "filter[app]": appID,
+                "filter[preReleaseVersion.version]": versionString,
+                "sort": "-uploadedDate",
+                "limit": "1",
+            ]
+        )
+        return resp.data.first.map(Self.buildInfo)
+    }
+
+    private static func buildInfo(_ resource: BuildResource) -> SubmissionStatusReport.BuildInfo {
+        SubmissionStatusReport.BuildInfo(
+            id: resource.id,
+            version: resource.attributes?.version,
+            processingState: resource.attributes?.processingState,
+            expired: resource.attributes?.expired
+        )
     }
 }
 
@@ -293,4 +454,20 @@ private struct ReviewSubmissionItemResource: Codable, Sendable {
     struct Attributes: Codable, Sendable {
         let state: String?
     }
+}
+
+private struct BuildResource: Codable, Sendable {
+    let id: String
+    let attributes: Attributes?
+
+    struct Attributes: Codable, Sendable {
+        let version: String?
+        let processingState: String?
+        let expired: Bool?
+    }
+}
+
+/// `{ "data": <build> | null }` — the shape of `GET /v1/appStoreVersions/{id}/build`.
+private struct SingleBuildEnvelope: Codable, Sendable {
+    let data: BuildResource?
 }

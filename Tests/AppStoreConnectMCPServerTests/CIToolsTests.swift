@@ -332,6 +332,10 @@ struct CIToolsTests {
             jsonCanned(["data": [["id": "app-1", "attributes": ["bundleId": "com.example.app"]]]]),
             jsonCanned(["data": [["id": "ver-1", "attributes": ["versionString": "1.0.0", "appStoreState": "METADATA_REJECTED"]]]]),
             jsonCanned(["data": []]),
+            jsonCanned(
+                ["data": ["id": "b1", "attributes": ["version": "42", "processingState": "VALID", "expired": false]]],
+                pathContains: "ver-1/build"
+            ),
         ])
         let result = try await CITools.call(
             name: "asc_submission_status",
@@ -341,5 +345,6 @@ struct CIToolsTests {
         #expect(result.isError == false)
         #expect(text(result).contains("METADATA_REJECTED"))
         #expect(text(result).lowercased().contains("metadata"))
+        #expect(text(result).contains("\"buildAttached\" : true") || text(result).contains("\"buildAttached\":true"))
     }
 }

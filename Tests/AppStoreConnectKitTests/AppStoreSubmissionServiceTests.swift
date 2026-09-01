@@ -27,6 +27,7 @@ struct AppStoreSubmissionServiceTests {
                 ]
             ]),
             .json(["data": [["id": "item-1", "attributes": ["state": "REJECTED"]]]]),
+            .json(["data": ["id": "b1", "attributes": ["version": "100", "processingState": "VALID", "expired": false]]]),
         ])
 
         let report = try await AppStoreSubmissionService(client: client).status(bundleID: "com.example.app")
@@ -36,6 +37,10 @@ struct AppStoreSubmissionServiceTests {
         #expect(report.items.first?.state == "REJECTED")
         #expect(report.needsDeveloperAction)
         #expect(report.diagnosis.contains("Resolution Center"))
+        #expect(report.buildAttached == true)
+        #expect(report.attachedBuild?.version == "100")
+        #expect(report.attachedBuild?.processingState == "VALID")
+        #expect(report.candidateBuild == nil)
     }
 
     @Test("Uses appVersionState when appStoreState is absent")
@@ -46,12 +51,17 @@ struct AppStoreSubmissionServiceTests {
                 "data": [["id": "ver-1", "attributes": ["versionString": "2.0.0", "appVersionState": "WAITING_FOR_REVIEW"]]]
             ]),
             .json(["data": [String]()]),
+            .json(["data": NSNull()]),  // /v1/appStoreVersions/ver-1/build — nothing attached
+            .json(["data": [String]()]),  // /v1/builds — no candidate build for the version
         ])
         let report = try await AppStoreSubmissionService(client: client).status(bundleID: "com.example.app")
         #expect(report.latestVersion?.state == "WAITING_FOR_REVIEW")
         #expect(report.reviewSubmission == nil)
         #expect(report.items.isEmpty)
         #expect(!report.needsDeveloperAction)
+        #expect(report.buildAttached == false)
+        #expect(report.attachedBuild == nil)
+        #expect(report.candidateBuild == nil)
     }
 
     @Test("Throws when the app cannot be resolved by bundle id")
