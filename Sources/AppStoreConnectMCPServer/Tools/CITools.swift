@@ -1,6 +1,7 @@
 import AppStoreConnectKit
 import Foundation
 import MCP
+import Synchronization
 
 /// The App Store Connect read/diagnostic tools exposed by this MCP server.
 ///
@@ -245,16 +246,22 @@ enum CITools {
         arguments: [String: Value],
         makeClient: ClientProvider = CITools.defaultClient
     ) async throws -> CallTool.Result {
-        let probe = ClientProbe()
+        // The provider is a synchronous `@Sendable` closure, so it cannot await an
+        // actor to record what it built; a mutex is the smallest thing that lets it
+        // hand the limiter back. Only the first client of a call is kept — a tool
+        // makes at most one.
+        let probe = Mutex<RateLimiter?>(nil)
         let provider: ClientProvider = {
             let client = try makeClient()
-            probe.capture(client.rateLimiter)
+            probe.withLock { limiter in
+                if limiter == nil { limiter = client.rateLimiter }
+            }
             return client
         }
 
         let result = try await dispatch(name: name, arguments: arguments, makeClient: provider)
 
-        guard let limiter = probe.rateLimiter,
+        guard let limiter = probe.withLock({ $0 }),
             let status = await limiter.status(),
             status.isNearLimit
         else { return result }
@@ -277,25 +284,6 @@ enum CITools {
             return .init(content: [.plainText("Unknown tool: \(name)")], isError: true)
         }
         return try await spec.handler(ToolArguments(arguments), makeClient)
-    }
-
-    /// Holds the `RateLimiter` of the client the current call constructed, if any.
-    /// The provider closure is `@Sendable`; a lock-guarded box keeps the capture legal.
-    private final class ClientProbe: @unchecked Sendable {
-        private let lock = NSLock()
-        private var limiter: RateLimiter?
-
-        func capture(_ limiter: RateLimiter) {
-            lock.lock()
-            defer { lock.unlock() }
-            if self.limiter == nil { self.limiter = limiter }
-        }
-
-        var rateLimiter: RateLimiter? {
-            lock.lock()
-            defer { lock.unlock() }
-            return limiter
-        }
     }
 
     // MARK: - Helpers
