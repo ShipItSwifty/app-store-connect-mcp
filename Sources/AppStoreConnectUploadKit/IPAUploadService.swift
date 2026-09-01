@@ -117,7 +117,7 @@ public struct IPAUploadService: Sendable {
             _ = try await Altool(context: shell)
                 .uploadApp(ipaPath: ipaURL.path, platform: "ios", apiKey: keyID, apiIssuer: issuerID)
                 .run()
-        } catch let ShellError.exitFailure(_, shellOutput) {
+        } catch ShellError.exitFailure(_, let shellOutput) {
             let detail = shellOutput.stderr.isEmpty ? shellOutput.stdout : shellOutput.stderr
             throw ASCError.uploadFailed(
                 asset: ipaURL.lastPathComponent,
@@ -180,7 +180,7 @@ public struct IPAUploadService: Sendable {
             }
             logger.debug("Extracted CFBundleVersion from IPA")
             return version
-        } catch let ShellError.exitFailure(_, shellOutput) {
+        } catch ShellError.exitFailure(_, let shellOutput) {
             logger.error("Failed to extract CFBundleVersion from IPA")
             throw ASCError.uploadFailed(
                 asset: ipaURL.lastPathComponent,
