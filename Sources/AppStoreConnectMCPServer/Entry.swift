@@ -69,6 +69,11 @@ struct AppStoreConnectMCP {
 
         Credentials are read from the environment: ASC_KEY_ID, ASC_ISSUER_ID, and
         either ASC_PRIVATE_KEY (raw PEM) or ASC_PRIVATE_KEY_PATH.
+
+        The API key must be a Team key with Developer, App Manager, or Admin access
+        — the Xcode Cloud (ci*) endpoints return 403 for finance/sales/support/
+        marketing-only keys. Signed tokens carry aud "appstoreconnect-v1" (handled
+        by AppStoreConnectKit); a missing/wrong aud is the usual cause of a 401.
         """
 }
 

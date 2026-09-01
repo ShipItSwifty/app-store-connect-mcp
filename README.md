@@ -46,6 +46,18 @@ Set these environment variables (same names as `altool` / Fastlane):
 - `ASC_ISSUER_ID`
 - `ASC_PRIVATE_KEY` (raw `.p8` PEM contents) **or** `ASC_PRIVATE_KEY_PATH` (path to the file)
 
+#### Key role and JWT audience
+
+- **The API key needs a role that can read Xcode Cloud.** Use a **Team key** with
+  **Developer**, **App Manager**, or **Admin** access. A key scoped only to
+  Finance / Sales / Customer Support / Marketing gets `403 FORBIDDEN` on the `ci*`
+  endpoints (`/v1/ciProducts`, …) even though App Store metadata calls succeed.
+- **The signed JWT must carry `aud: "appstoreconnect-v1"`.** `AppStoreConnectKit`
+  sets this for you (`JWTGenerator`), along with ES256 signing and a ≤20-minute
+  lifetime — the values Apple requires. If you mint tokens yourself for the raw
+  `get` client, a missing or wrong `aud` is the usual cause of a `401` with an
+  `NOT_AUTHORIZED` / `no valid 'aud'` detail.
+
 ### Tools
 
 | Tool | Arguments | Returns |
@@ -60,10 +72,11 @@ Set these environment variables (same names as `altool` / Fastlane):
 | `asc_ci_get_artifacts` | `build_action_id` | log bundle / xcresult / product download URLs |
 | `asc_ci_failure_report` | `build_run_id`, `workflow_name?` | **one aggregated payload**: every failed action's issues, failed tests, and artifacts, with run + action `durationSeconds` (a value near Xcode Cloud's 120-minute ceiling means a timeout) |
 | `asc_ci_failure_report_with_logs` | `build_run_id`, `workflow_name?` | `asc_ci_failure_report` plus each failed action's **text logs downloaded and parsed** into structured findings (compiler / linker / code-signing errors, test failures, with file + line). Zipped `LOG_BUNDLE` artifacts are expanded in-process so custom CI-script output (`ci_post_xcodebuild.sh`, …) is parsed too; genuinely binary artifacts (`xcresult`) are listed under `skippedArtifacts` |
+| `asc_ci_latest_failure` | `app_id?` / `product_id?` / `workflow_id?` (one required) | **triage shortcut**: resolves the scope, finds the most recent failed build run, and returns its `asc_ci_failure_report` payload plus the chosen `workflow` + `build_run_id`. Collapses the products → workflows → build runs → run → issues walk into one call; returns `{"found": false}` when nothing has failed |
 | `asc_ci_analyze_log` | `text?` **or** `download_url?` | parse raw CI log text (or a downloaded text artifact / zipped log bundle) into structured findings by kind |
 | `asc_submission_status` | `bundle_id` | diagnose where the latest App Store version stands in review: version state (`REJECTED`, `METADATA_REJECTED`, `INVALID_BINARY`, `WAITING_FOR_REVIEW`, …), review-submission state, per-item outcomes, whether the developer must act, and a plain-language next step |
 
-The server does no analysis of its own beyond normalization (`CIFailureReport`, `CILogParser`, `AppStoreSubmissionService`) — the calling agent reasons over the data. When a response leaves the App Store Connect hourly rate limit within 10 points of its throttle threshold, an extra text block is appended warning that further calls may stall.
+The server does no analysis of its own beyond normalization (`CIFailureReport`, `CILatestFailure`, `CILogParser`, `AppStoreSubmissionService`) — the calling agent reasons over the data. When a response leaves the App Store Connect hourly rate limit within 10 points of its throttle threshold, an extra text block is appended warning that further calls may stall.
 
 ### Run it
 

@@ -50,6 +50,7 @@ struct CIToolsTests {
                 "asc_ci_analyze_log",
                 "asc_submission_status",
                 "asc_ci_list_test_plans",
+                "asc_ci_latest_failure",
             ]))
     }
 
@@ -166,6 +167,73 @@ struct CIToolsTests {
         }
         #expect(result.isError == false)
         #expect(text(result).contains("nope"))
+    }
+
+    @Test("asc_ci_latest_failure resolves a workflow, picks the newest red run, and reports it")
+    func latestFailure() async throws {
+        let client = makeMockMCPClient([
+            jsonCanned(["data": ["id": "wf-1", "attributes": ["name": "Build"]]], pathContains: "/ciWorkflows/wf-1"),
+            jsonCanned(
+                [
+                    "data": [
+                        [
+                            "id": "run-9",
+                            "attributes": [
+                                "number": 9, "completionStatus": "FAILED",
+                                "startedDate": "2026-02-01T10:00:00Z",
+                            ],
+                        ]
+                    ]
+                ],
+                pathContains: "/buildRuns"
+            ),
+            jsonCanned(["data": ["id": "run-9", "attributes": ["number": 9, "completionStatus": "FAILED"]]]),
+            jsonCanned(
+                ["data": [["id": "act-1", "attributes": ["name": "Build", "actionType": "BUILD", "completionStatus": "FAILED"]]]],
+                pathContains: "/actions"
+            ),
+            jsonCanned(
+                ["data": [["id": "iss-1", "attributes": ["issueType": "ERROR", "message": "latest boom"]]]],
+                pathContains: "/issues"
+            ),
+            jsonCanned(["data": []], pathContains: "/testResults"),
+            jsonCanned(["data": []], pathContains: "/artifacts"),
+        ])
+        let result = try await CITools.call(
+            name: "asc_ci_latest_failure", arguments: ["workflow_id": .string("wf-1")]
+        ) { client }
+
+        #expect(result.isError == false)
+        let payload = text(result)
+        #expect(payload.contains("\"found\" : true"))
+        #expect(payload.contains("run-9"))
+        #expect(payload.contains("latest boom"))
+    }
+
+    @Test("asc_ci_latest_failure returns found:false when the scope has no red runs")
+    func latestFailureNone() async throws {
+        let client = makeMockMCPClient([
+            jsonCanned(["data": ["id": "wf-1", "attributes": ["name": "Build"]]], pathContains: "/ciWorkflows/wf-1"),
+            jsonCanned(
+                ["data": [["id": "run-1", "attributes": ["number": 1, "completionStatus": "SUCCEEDED"]]]],
+                pathContains: "/buildRuns"
+            ),
+        ])
+        let result = try await CITools.call(
+            name: "asc_ci_latest_failure", arguments: ["workflow_id": .string("wf-1")]
+        ) { client }
+
+        #expect(result.isError == false)
+        #expect(text(result).contains("\"found\" : false"))
+    }
+
+    @Test("asc_ci_latest_failure without a scope throws ASCError.invalidConfiguration")
+    func latestFailureNoScope() async {
+        await #expect(throws: ASCError.self) {
+            _ = try await CITools.call(name: "asc_ci_latest_failure", arguments: [:]) {
+                makeMockMCPClient([])
+            }
+        }
     }
 
     @Test("asc_ci_list_build_runs with failed_only returns only failed runs")

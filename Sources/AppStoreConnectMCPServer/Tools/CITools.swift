@@ -190,6 +190,40 @@ enum CITools {
             ])
         ),
         Tool(
+            name: "asc_ci_latest_failure",
+            description: """
+                Triage shortcut. Given an app id, product id, or workflow id, find the \
+                most recent failed build run and return its aggregated failure report \
+                (every failed action's issues with file/line, failed tests, and artifact \
+                download URLs) plus the resolved workflow and build_run_id. Collapses the \
+                products → workflows → build runs → run → issues walk into one call. \
+                Returns {"found": false} when nothing has failed in the scanned workflows. \
+                For parsed log text, feed the returned build_run_id to \
+                asc_ci_failure_report_with_logs.
+                """,
+            inputSchema: .object([
+                "type": .string("object"),
+                "properties": .object([
+                    "workflow_id": .object([
+                        "type": .string("string"),
+                        "description": .string(
+                            "Xcode Cloud workflow id — scan just this workflow (most specific)."),
+                    ]),
+                    "product_id": .object([
+                        "type": .string("string"),
+                        "description": .string(
+                            "Xcode Cloud product id — scan every workflow of this product."),
+                    ]),
+                    "app_id": .object([
+                        "type": .string("string"),
+                        "description": .string(
+                            "App Store Connect app id — scan every workflow of every Xcode Cloud "
+                                + "product of this app."),
+                    ]),
+                ]),
+            ])
+        ),
+        Tool(
             name: "asc_ci_analyze_log",
             description: """
                 Parse raw CI log text (or a downloaded text artifact) into structured findings: \
@@ -348,6 +382,15 @@ enum CITools {
             let id = try require(arguments, "build_run_id")
             let workflowName = arguments["workflow_name"]?.stringValue
             return try json(await client.ciFailureReportWithLogs(buildRunID: id, workflowName: workflowName))
+
+        case "asc_ci_latest_failure":
+            let client = try makeClient()
+            return try json(
+                await client.ciLatestFailureReport(
+                    workflowID: arguments["workflow_id"]?.stringValue,
+                    productID: arguments["product_id"]?.stringValue,
+                    appID: arguments["app_id"]?.stringValue
+                ))
 
         case "asc_ci_analyze_log":
             if let text = arguments["text"]?.stringValue, !text.isEmpty {
