@@ -63,6 +63,65 @@ struct CIArtifactDownloadTests {
         #expect(!AppStoreConnectClient.looksLikeTextLog(artifact(type: nil, name: "app.ipa")))
     }
 
+    @Test("looksLikeLogBundle recognises LOG_BUNDLE and zipped logs, not xcresult")
+    func logBundleHeuristic() {
+        func artifact(type: String?, name: String?) -> CIFailureReport.FailedAction.Artifact {
+            .init(fileType: type, fileName: name, downloadUrl: "https://x")
+        }
+        #expect(AppStoreConnectClient.looksLikeLogBundle(artifact(type: "LOG_BUNDLE", name: "logs.zip")))
+        #expect(AppStoreConnectClient.looksLikeLogBundle(artifact(type: "LOG", name: "all-logs.zip")))
+        #expect(!AppStoreConnectClient.looksLikeLogBundle(artifact(type: "LOG", name: "xcodebuild.log")))
+        #expect(!AppStoreConnectClient.looksLikeLogBundle(artifact(type: "XCRESULT", name: "Test.xcresult")))
+    }
+
+    @Test("analyzeArtifactLog expands a zipped log bundle and merges findings from every text file")
+    func analyzeArtifactLogExpandsBundle() async throws {
+        let zip = try makeTestZip([
+            "xcodebuild.log": "Sources/App/Foo.swift:10:5: error: cannot find 'bar' in scope\n",
+            "scripts/ci_post_xcodebuild.sh.log": "+ ./upload.sh\nfatal error: signing identity not found\n",
+            "products/App.ipa.bin": "binary-should-be-skipped",
+        ])
+        let client = makeClient(responses: [.response(statusCode: 200, headers: [:], body: zip)])
+
+        let analysis = try await client.analyzeArtifactLog(from: "https://dl.example/all-logs.zip")
+        let kinds = Set(analysis.findings.map(\.kind))
+        #expect(kinds.contains(.compileError))
+        #expect(analysis.findings.contains { $0.message.contains("signing identity not found") })
+    }
+
+    @Test("ciFailureReportWithLogs expands a LOG_BUNDLE artifact and captures script output")
+    func failureReportExpandsLogBundle() async throws {
+        let zip = try makeTestZip([
+            "xcodebuild.log": "** BUILD SUCCEEDED **\n",
+            "ci_post_xcodebuild.sh.log": "+ swiftlint --strict\n/src/A.swift:3:1: error: script phase failed\n",
+        ])
+        let client = makeClient(responses: [
+            .json(["data": ["id": "run-1", "attributes": ["number": 1, "completionStatus": "FAILED"]]]),
+            .json([
+                "data": [
+                    ["id": "act-1", "attributes": ["name": "Archive", "actionType": "ARCHIVE", "completionStatus": "FAILED"]]
+                ]
+            ]),
+            .json(["data": [String]()]),
+            .json(["data": [String]()]),
+            .json([
+                "data": [
+                    [
+                        "id": "ar-1",
+                        "attributes": [
+                            "fileType": "LOG_BUNDLE", "fileName": "logs.zip", "downloadUrl": "https://dl/logs.zip",
+                        ],
+                    ]
+                ]
+            ]),
+            .response(statusCode: 200, headers: [:], body: zip),
+        ])
+
+        let result = try await client.ciFailureReportWithLogs(buildRunID: "run-1")
+        let analysis = try #require(result.logFindingsByAction["act-1"])
+        #expect(analysis.findings.contains { $0.message.contains("script phase failed") })
+    }
+
     @Test("ciFailureReportWithLogs attaches parsed findings and notes skipped binaries")
     func failureReportWithLogs() async throws {
         let client = makeClient(responses: [

@@ -40,9 +40,10 @@ extension AppStoreConnectClient {
 
     /// Downloads a CI artifact and parses it as a text log.
     ///
-    /// Binary or non-UTF-8 artifacts (e.g. zipped `LOG_BUNDLE`s, `xcresult` bundles) cannot
-    /// be parsed here — this throws ``ASCError/uploadFailed(asset:reason:)`` for those, and the
-    /// caller should download and expand them out-of-band.
+    /// A zipped `LOG_BUNDLE` is expanded in-process and every text file inside it
+    /// (the `xcodebuild` output *and* the stdout/stderr of custom CI scripts such as
+    /// `ci_post_xcodebuild.sh`) is parsed and merged. Genuinely binary artifacts
+    /// (`xcresult` bundles, products) still throw ``ASCError/uploadFailed(asset:reason:)``.
     ///
     /// - Parameters:
     ///   - urlString: The artifact `downloadUrl`.
@@ -53,13 +54,73 @@ extension AppStoreConnectClient {
         parser: CILogParser = CILogParser()
     ) async throws -> CILogAnalysis {
         let data = try await downloadArtifact(from: urlString)
+        let name = URL(string: urlString)?.lastPathComponent ?? "artifact"
+
+        if ZipArchive.looksLikeZip(data) {
+            let bundle = Self.analyzeLogBundle(data, parser: parser)
+            guard let analysis = bundle.analysis else {
+                throw ASCError.uploadFailed(
+                    asset: name,
+                    reason: "Log bundle held no readable text logs"
+                        + (bundle.skipped.isEmpty ? "." : ": \(bundle.skipped.joined(separator: "; "))")
+                )
+            }
+            return analysis
+        }
+
         guard let text = String(data: data, encoding: .utf8) else {
             throw ASCError.uploadFailed(
-                asset: URL(string: urlString)?.lastPathComponent ?? "artifact",
-                reason: "Artifact is not UTF-8 text (\(data.count) bytes); expand it out-of-band before analyzing."
+                asset: name,
+                reason: "Artifact is not UTF-8 text or a ZIP (\(data.count) bytes); expand it out-of-band before analyzing."
             )
         }
         return parser.parse(text)
+    }
+
+    /// Expands a `LOG_BUNDLE` ZIP in memory and parses every text file inside it,
+    /// merging the findings. Returns `nil` analysis when the archive yielded no
+    /// readable text, along with notes about what was skipped.
+    static func analyzeLogBundle(
+        _ data: Data,
+        parser: CILogParser
+    ) -> (analysis: CILogAnalysis?, skipped: [String]) {
+        let extraction: (entries: [ZipEntry], skipped: [String])
+        do {
+            extraction = try ZipArchive.entries(in: data, where: Self.isLikelyTextLogEntry)
+        } catch {
+            return (nil, ["log bundle could not be expanded: \(error)"])
+        }
+
+        var findings: [CILogFinding] = []
+        var linesScanned = 0
+        var skipped = extraction.skipped
+
+        for entry in extraction.entries.sorted(by: { $0.path < $1.path }) {
+            guard let text = String(data: entry.data, encoding: .utf8) else {
+                skipped.append("\(entry.path): not UTF-8 text")
+                continue
+            }
+            let parsed = parser.parse(text)
+            findings.append(contentsOf: parsed.findings)
+            linesScanned += parsed.linesScanned
+        }
+
+        guard linesScanned > 0 || !findings.isEmpty else { return (nil, skipped) }
+        return (CILogAnalysis(findings: findings, linesScanned: linesScanned), skipped)
+    }
+
+    /// Denylist heuristic for ZIP entries worth parsing as text. Errs toward recall
+    /// (mirrors ``CILogParser``): anything not obviously binary is worth a scan, and
+    /// per-line classification keeps the noise bounded.
+    static func isLikelyTextLogEntry(_ path: String) -> Bool {
+        let lower = path.lowercased()
+        let binarySuffixes = [
+            ".png", ".jpg", ".jpeg", ".gif", ".pdf", ".zip", ".gz", ".tar", ".xcresult",
+            ".plist", ".a", ".o", ".dylib", ".framework", ".ipa", ".app", ".dsym", ".car",
+            ".nib", ".bin", ".db", ".sqlite", ".mobileprovision", ".p12", ".cer", ".xcarchive",
+        ]
+        if binarySuffixes.contains(where: lower.hasSuffix) { return false }
+        return true
     }
 }
 
@@ -113,19 +174,33 @@ extension AppStoreConnectClient {
         for action in report.failedActions {
             var merged: [CILogFinding] = []
             var linesScanned = 0
+            let label = action.name ?? action.id
             for artifact in action.artifacts {
                 guard let downloadURL = artifact.downloadUrl, !downloadURL.isEmpty else { continue }
-                guard Self.looksLikeTextLog(artifact) else {
-                    skipped.append(
-                        "\(action.name ?? action.id): \(artifact.fileName ?? "artifact") (\(artifact.fileType ?? "unknown type"))")
-                    continue
-                }
-                do {
-                    let analysis = try await analyzeArtifactLog(from: downloadURL, parser: parser)
-                    merged.append(contentsOf: analysis.findings)
-                    linesScanned += analysis.linesScanned
-                } catch {
-                    skipped.append("\(action.name ?? action.id): \(artifact.fileName ?? "artifact") — \(error.localizedDescription)")
+                let artifactName = artifact.fileName ?? "artifact"
+
+                if Self.looksLikeTextLog(artifact) {
+                    do {
+                        let analysis = try await analyzeArtifactLog(from: downloadURL, parser: parser)
+                        merged.append(contentsOf: analysis.findings)
+                        linesScanned += analysis.linesScanned
+                    } catch {
+                        skipped.append("\(label): \(artifactName) — \(error.localizedDescription)")
+                    }
+                } else if Self.looksLikeLogBundle(artifact) {
+                    do {
+                        let data = try await downloadArtifact(from: downloadURL)
+                        let bundle = Self.analyzeLogBundle(data, parser: parser)
+                        if let analysis = bundle.analysis {
+                            merged.append(contentsOf: analysis.findings)
+                            linesScanned += analysis.linesScanned
+                        }
+                        skipped.append(contentsOf: bundle.skipped.map { "\(label): \(artifactName) → \($0)" })
+                    } catch {
+                        skipped.append("\(label): \(artifactName) — \(error.localizedDescription)")
+                    }
+                } else {
+                    skipped.append("\(label): \(artifactName) (\(artifact.fileType ?? "unknown type"))")
                 }
             }
             if !merged.isEmpty || linesScanned > 0 {
@@ -146,9 +221,20 @@ extension AppStoreConnectClient {
         let name = (artifact.fileName ?? "").lowercased()
         if type.contains("XCRESULT") || name.hasSuffix(".xcresult") { return false }
         if name.hasSuffix(".zip") || name.hasSuffix(".gz") || name.hasSuffix(".ipa") { return false }
-        if type.contains("LOG") { return !name.hasSuffix(".zip") }
+        if type.contains("LOG") && !type.contains("BUNDLE") { return !name.hasSuffix(".zip") }
         if name.hasSuffix(".log") || name.hasSuffix(".txt") { return true }
         // LOG_BUNDLE is usually zipped; treat unknown types conservatively as non-text.
+        return false
+    }
+
+    /// Heuristic: is this artifact a zipped `LOG_BUNDLE` we should expand and parse
+    /// file-by-file (this is where custom CI-script output lives)?
+    static func looksLikeLogBundle(_ artifact: CIFailureReport.FailedAction.Artifact) -> Bool {
+        let type = (artifact.fileType ?? "").uppercased()
+        let name = (artifact.fileName ?? "").lowercased()
+        if type.contains("XCRESULT") || name.hasSuffix(".xcresult") { return false }
+        if type.contains("LOG_BUNDLE") || type.contains("LOGBUNDLE") { return true }
+        if type.contains("LOG") && (name.hasSuffix(".zip") || name.hasSuffix(".gz")) { return true }
         return false
     }
 }

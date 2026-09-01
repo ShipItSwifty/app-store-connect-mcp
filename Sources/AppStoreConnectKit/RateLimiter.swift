@@ -19,6 +19,33 @@ import Logging
 /// // After each response:
 /// await limiter.update(from: responseHeaders)
 /// ```
+/// A point-in-time view of the App Store Connect hourly rate limit.
+public struct RateLimitStatus: Codable, Sendable {
+    /// Requests permitted per rolling hour.
+    public let limit: Int
+    /// Requests still available this hour.
+    public let remaining: Int
+    /// Fraction of the hourly limit consumed (`0...1`).
+    public let usedFraction: Double
+    /// The fraction at which ``RateLimiter`` starts pausing requests.
+    public let throttleThreshold: Double
+
+    /// Consumed percentage, rounded to a whole number (for display).
+    public var usedPercent: Int { Int((usedFraction * 100).rounded()) }
+
+    /// `true` once usage is within 10 points of the throttle threshold — the point
+    /// at which a long investigation risks stalling on backoff.
+    public var isNearLimit: Bool { usedFraction >= max(0, throttleThreshold - 0.1) }
+
+    /// Creates a `RateLimitStatus`.
+    public init(limit: Int, remaining: Int, usedFraction: Double, throttleThreshold: Double) {
+        self.limit = limit
+        self.remaining = remaining
+        self.usedFraction = usedFraction
+        self.throttleThreshold = throttleThreshold
+    }
+}
+
 public actor RateLimiter {
     /// The fraction of the limit at which throttling begins (0.9 = 90% used).
     public let throttleThreshold: Double
@@ -79,6 +106,20 @@ public actor RateLimiter {
     var usageFraction: Double? {
         guard let hourlyLimit, let hourlyRemaining, hourlyLimit > 0 else { return nil }
         return Double(hourlyLimit - hourlyRemaining) / Double(hourlyLimit)
+    }
+
+    /// A serializable snapshot of the current hourly rate-limit position, or `nil`
+    /// before any response headers have been seen. Consumers (e.g. the MCP server)
+    /// use this to warn an agent that it is approaching the throttle threshold.
+    public func status() -> RateLimitStatus? {
+        guard let hourlyLimit, let hourlyRemaining, hourlyLimit > 0 else { return nil }
+        let used = Double(hourlyLimit - hourlyRemaining) / Double(hourlyLimit)
+        return RateLimitStatus(
+            limit: hourlyLimit,
+            remaining: hourlyRemaining,
+            usedFraction: used,
+            throttleThreshold: throttleThreshold
+        )
     }
 
     // MARK: - Private

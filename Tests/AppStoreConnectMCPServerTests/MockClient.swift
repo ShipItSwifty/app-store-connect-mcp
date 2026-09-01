@@ -17,6 +17,8 @@ final class MCPMockURLProtocol: URLProtocol {
         /// under test issues requests concurrently (e.g. `async let`), where plain
         /// FIFO ordering is racy.
         var pathContains: String?
+        /// Extra response headers merged on top of the default `Content-Type`.
+        var headers: [String: String] = [:]
     }
 
     private static let lock = NSLock()
@@ -55,7 +57,7 @@ final class MCPMockURLProtocol: URLProtocol {
             url: request.url!,
             statusCode: canned.statusCode,
             httpVersion: nil,
-            headerFields: ["Content-Type": "application/json"]
+            headerFields: ["Content-Type": "application/json"].merging(canned.headers) { _, new in new }
         )!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: canned.body)
@@ -80,11 +82,13 @@ func makeMockMCPClient(_ responses: [MCPMockURLProtocol.Canned]) -> AppStoreConn
 func jsonCanned(
     _ object: Any,
     statusCode: Int = 200,
-    pathContains: String? = nil
+    pathContains: String? = nil,
+    headers: [String: String] = [:]
 ) -> MCPMockURLProtocol.Canned {
     .init(
         statusCode: statusCode,
         body: try! JSONSerialization.data(withJSONObject: object),
-        pathContains: pathContains
+        pathContains: pathContains,
+        headers: headers
     )
 }

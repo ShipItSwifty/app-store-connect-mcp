@@ -56,4 +56,27 @@ struct RateLimiterTests {
         let snapshot = await limiter.snapshot
         #expect(snapshot?.remaining == 1)
     }
+
+    @Test("status() is nil before any headers, then reports usage")
+    func statusReportsUsage() async throws {
+        let limiter = RateLimiter(throttleThreshold: 0.9)
+        #expect(await limiter.status() == nil)
+
+        await limiter.update(from: ["X-Rate-Limit": "user-hour-lim:1000;user-hour-rem:150"])
+        let status = try #require(await limiter.status())
+        #expect(status.limit == 1000)
+        #expect(status.remaining == 150)
+        #expect(status.usedPercent == 85)
+        #expect(status.throttleThreshold == 0.9)
+        // 85% used is within 10 points of the 90% throttle → near the limit.
+        #expect(status.isNearLimit)
+    }
+
+    @Test("status().isNearLimit is false with comfortable headroom")
+    func statusNotNearLimit() async throws {
+        let limiter = RateLimiter(throttleThreshold: 0.9)
+        await limiter.update(from: ["X-Rate-Limit": "user-hour-lim:1000;user-hour-rem:500"])
+        let status = try #require(await limiter.status())
+        #expect(!status.isNearLimit)
+    }
 }

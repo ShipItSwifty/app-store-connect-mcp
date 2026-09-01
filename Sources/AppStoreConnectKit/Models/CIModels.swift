@@ -45,19 +45,71 @@ public struct CIWorkflow: Codable, Sendable {
         public let isEnabled: Bool?
         public let isLockedForEditing: Bool?
         public let lastModifiedDate: String?
+        /// The ordered build/analyze/test/archive steps the workflow runs. Present
+        /// on the single-workflow endpoint; carries each test action's test-plan config.
+        public let actions: [Action]?
 
         public init(
             name: String? = nil,
             description: String? = nil,
             isEnabled: Bool? = nil,
             isLockedForEditing: Bool? = nil,
-            lastModifiedDate: String? = nil
+            lastModifiedDate: String? = nil,
+            actions: [Action]? = nil
         ) {
             self.name = name
             self.description = description
             self.isEnabled = isEnabled
             self.isLockedForEditing = isLockedForEditing
             self.lastModifiedDate = lastModifiedDate
+            self.actions = actions
+        }
+    }
+
+    /// One step in a workflow's action list.
+    public struct Action: Codable, Sendable {
+        public let name: String?
+        /// `BUILD`, `ANALYZE`, `TEST`, `ARCHIVE`.
+        public let actionType: String?
+        public let scheme: String?
+        public let platform: String?
+        /// For `TEST` actions: which test plans run and how they were selected.
+        public let testConfiguration: TestConfiguration?
+
+        public init(
+            name: String? = nil,
+            actionType: String? = nil,
+            scheme: String? = nil,
+            platform: String? = nil,
+            testConfiguration: TestConfiguration? = nil
+        ) {
+            self.name = name
+            self.actionType = actionType
+            self.scheme = scheme
+            self.platform = platform
+            self.testConfiguration = testConfiguration
+        }
+
+        /// A `TEST` action's test-plan selection.
+        public struct TestConfiguration: Codable, Sendable {
+            /// `USE_SCHEME_SETTINGS`, `SPECIFIC_TEST_PLANS`, `USE_TEST_PLAN`, …
+            public let kind: String?
+            /// The selected test plans (populated when `kind == SPECIFIC_TEST_PLANS`).
+            public let testPlans: [TestPlan]?
+
+            public init(kind: String? = nil, testPlans: [TestPlan]? = nil) {
+                self.kind = kind
+                self.testPlans = testPlans
+            }
+
+            public struct TestPlan: Codable, Sendable {
+                /// The test plan's name, e.g. `Smoke.xctestplan` → `"Smoke"`.
+                public let name: String?
+
+                public init(name: String? = nil) {
+                    self.name = name
+                }
+            }
         }
     }
 }
@@ -123,6 +175,17 @@ public struct CIBuildRun: Codable, Sendable {
             }
         }
     }
+
+    /// Wall-clock seconds between `startedDate` and `finishedDate`, or `nil` if the
+    /// run has not finished or the dates are unparseable. A large value here is the
+    /// quickest tell for a timed-out build.
+    public var durationSeconds: Double? {
+        CIDate.durationSeconds(from: attributes?.startedDate, to: attributes?.finishedDate)
+    }
+
+    /// Statuses that indicate a build run genuinely failed (as opposed to
+    /// succeeding, being skipped, or still running). Used to filter run lists.
+    public static let failureCompletionStatuses: Set<String> = ["FAILED", "ERRORED", "INVALID"]
 }
 
 /// One action (a build/analyze/test/archive step) inside a build run.
@@ -181,6 +244,12 @@ public struct CIBuildAction: Codable, Sendable {
                 self.warnings = warnings
             }
         }
+    }
+
+    /// Wall-clock seconds this action ran, or `nil` if it has not finished or the
+    /// dates are unparseable.
+    public var durationSeconds: Double? {
+        CIDate.durationSeconds(from: attributes?.startedDate, to: attributes?.finishedDate)
     }
 }
 

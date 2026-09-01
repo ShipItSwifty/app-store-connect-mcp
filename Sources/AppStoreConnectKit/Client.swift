@@ -55,7 +55,10 @@ public actor AppStoreConnectClient {
     public let jwtGenerator: JWTGenerator
 
     /// The rate limiter used to enforce Apple's API rate limits.
-    public let rateLimiter: RateLimiter
+    ///
+    /// `nonisolated` so callers (e.g. the MCP server's rate-limit heads-up) can read
+    /// the limiter handle synchronously; it is an immutable `Sendable` actor reference.
+    public nonisolated let rateLimiter: RateLimiter
 
     /// Creates an `AppStoreConnectClient`.
     ///

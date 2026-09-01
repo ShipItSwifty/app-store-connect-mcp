@@ -52,17 +52,18 @@ Set these environment variables (same names as `altool` / Fastlane):
 |---|---|---|
 | `asc_ci_list_products` | `app_id?` | Xcode Cloud products |
 | `asc_ci_list_workflows` | `product_id` | workflows for a product |
-| `asc_ci_list_build_runs` | `workflow_id`, `limit?` | recent build runs, newest first |
-| `asc_ci_get_build_run` | `build_run_id` | the run + its actions with issue counts |
+| `asc_ci_list_build_runs` | `workflow_id`, `limit?`, `failed_only?` | recent build runs, newest first; `failed_only` over-fetches and returns only `FAILED`/`ERRORED`/`INVALID` runs |
+| `asc_ci_list_test_plans` | `workflow_id` | the test plans the workflow runs, flattened from its `TEST` actions (scheme, selection kind, test-plan names) |
+| `asc_ci_get_build_run` | `build_run_id` | the run + its actions with issue counts, plus `durationSeconds` for the run and each action |
 | `asc_ci_get_issues` | `build_action_id` | errors / warnings / analyzer findings (file + line) |
 | `asc_ci_get_test_results` | `build_action_id` | test results |
 | `asc_ci_get_artifacts` | `build_action_id` | log bundle / xcresult / product download URLs |
-| `asc_ci_failure_report` | `build_run_id`, `workflow_name?` | **one aggregated payload**: every failed action's issues, failed tests, and artifacts |
-| `asc_ci_failure_report_with_logs` | `build_run_id`, `workflow_name?` | `asc_ci_failure_report` plus each failed action's **text logs downloaded and parsed** into structured findings (compiler / linker / code-signing errors, test failures, with file + line); binary artifacts are listed under `skippedArtifacts` |
-| `asc_ci_analyze_log` | `text?` **or** `download_url?` | parse raw CI log text (or a downloaded text artifact) into structured findings by kind |
+| `asc_ci_failure_report` | `build_run_id`, `workflow_name?` | **one aggregated payload**: every failed action's issues, failed tests, and artifacts, with run + action `durationSeconds` (a value near Xcode Cloud's 120-minute ceiling means a timeout) |
+| `asc_ci_failure_report_with_logs` | `build_run_id`, `workflow_name?` | `asc_ci_failure_report` plus each failed action's **text logs downloaded and parsed** into structured findings (compiler / linker / code-signing errors, test failures, with file + line). Zipped `LOG_BUNDLE` artifacts are expanded in-process so custom CI-script output (`ci_post_xcodebuild.sh`, …) is parsed too; genuinely binary artifacts (`xcresult`) are listed under `skippedArtifacts` |
+| `asc_ci_analyze_log` | `text?` **or** `download_url?` | parse raw CI log text (or a downloaded text artifact / zipped log bundle) into structured findings by kind |
 | `asc_submission_status` | `bundle_id` | diagnose where the latest App Store version stands in review: version state (`REJECTED`, `METADATA_REJECTED`, `INVALID_BINARY`, `WAITING_FOR_REVIEW`, …), review-submission state, per-item outcomes, whether the developer must act, and a plain-language next step |
 
-The server does no analysis of its own beyond normalization (`CIFailureReport`, `CILogParser`, `AppStoreSubmissionService`) — the calling agent reasons over the data.
+The server does no analysis of its own beyond normalization (`CIFailureReport`, `CILogParser`, `AppStoreSubmissionService`) — the calling agent reasons over the data. When a response leaves the App Store Connect hourly rate limit within 10 points of its throttle threshold, an extra text block is appended warning that further calls may stall.
 
 ### Run it
 

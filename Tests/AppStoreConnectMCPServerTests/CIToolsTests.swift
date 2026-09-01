@@ -49,6 +49,7 @@ struct CIToolsTests {
                 "asc_ci_failure_report_with_logs",
                 "asc_ci_analyze_log",
                 "asc_submission_status",
+                "asc_ci_list_test_plans",
             ]))
     }
 
@@ -165,6 +166,96 @@ struct CIToolsTests {
         }
         #expect(result.isError == false)
         #expect(text(result).contains("nope"))
+    }
+
+    @Test("asc_ci_list_build_runs with failed_only returns only failed runs")
+    func listBuildRunsFailedOnly() async throws {
+        let client = makeMockMCPClient([
+            jsonCanned([
+                "data": [
+                    ["id": "run-4", "attributes": ["number": 4, "completionStatus": "SUCCEEDED"]],
+                    ["id": "run-3", "attributes": ["number": 3, "completionStatus": "FAILED"]],
+                    ["id": "run-2", "attributes": ["number": 2, "completionStatus": "SUCCEEDED"]],
+                    ["id": "run-1", "attributes": ["number": 1, "completionStatus": "ERRORED"]],
+                ]
+            ])
+        ])
+        let result = try await CITools.call(
+            name: "asc_ci_list_build_runs",
+            arguments: ["workflow_id": .string("wf-1"), "failed_only": .bool(true)]
+        ) { client }
+
+        #expect(result.isError == false)
+        let payload = text(result)
+        #expect(payload.contains("run-3"))
+        #expect(payload.contains("run-1"))
+        #expect(!payload.contains("run-4"))
+        #expect(!payload.contains("run-2"))
+    }
+
+    @Test("asc_ci_list_test_plans flattens a workflow's TEST actions")
+    func listTestPlans() async throws {
+        let client = makeMockMCPClient([
+            jsonCanned([
+                "data": [
+                    "id": "wf-1",
+                    "attributes": [
+                        "name": "Release",
+                        "actions": [
+                            ["name": "Build", "actionType": "BUILD"],
+                            [
+                                "name": "Test", "actionType": "TEST", "scheme": "AppScheme",
+                                "testConfiguration": [
+                                    "kind": "SPECIFIC_TEST_PLANS",
+                                    "testPlans": [["name": "Smoke"]],
+                                ],
+                            ],
+                        ],
+                    ],
+                ]
+            ])
+        ])
+        let result = try await CITools.call(
+            name: "asc_ci_list_test_plans", arguments: ["workflow_id": .string("wf-1")]
+        ) { client }
+
+        #expect(result.isError == false)
+        let payload = text(result)
+        #expect(payload.contains("SPECIFIC_TEST_PLANS"))
+        #expect(payload.contains("\"Smoke\""))
+    }
+
+    @Test("A near-limit rate-limit header appends a heads-up content block")
+    func rateLimitHint() async throws {
+        let client = makeMockMCPClient([
+            jsonCanned(
+                ["data": [["id": "prod-1", "attributes": ["name": "App"]]]],
+                headers: ["X-Rate-Limit": "user-hour-lim:1000;user-hour-rem:50"]
+            )
+        ])
+        let result = try await CITools.call(name: "asc_ci_list_products", arguments: [:]) { client }
+
+        #expect(result.isError == false)
+        #expect(result.content.count == 2, "expected the payload plus a rate-limit hint block")
+        #expect(text(result).contains("prod-1"))
+        let joined = result.content.compactMap { content -> String? in
+            if case .text(let value, _, _) = content { return value }
+            return nil
+        }.joined(separator: "\n")
+        #expect(joined.contains("rate limit"))
+        #expect(joined.contains("95%"))
+    }
+
+    @Test("A comfortable rate-limit header adds no extra block")
+    func rateLimitNoHintWhenHealthy() async throws {
+        let client = makeMockMCPClient([
+            jsonCanned(
+                ["data": [["id": "prod-1", "attributes": ["name": "App"]]]],
+                headers: ["X-Rate-Limit": "user-hour-lim:1000;user-hour-rem:900"]
+            )
+        ])
+        let result = try await CITools.call(name: "asc_ci_list_products", arguments: [:]) { client }
+        #expect(result.content.count == 1)
     }
 
     @Test("asc_submission_status returns a diagnosis payload")

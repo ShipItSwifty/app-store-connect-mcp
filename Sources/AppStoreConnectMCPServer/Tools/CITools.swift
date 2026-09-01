@@ -58,6 +58,32 @@ enum CITools {
                         "type": .string("integer"),
                         "description": .string("Max build runs to return (default 20)."),
                     ]),
+                    "failed_only": .object([
+                        "type": .string("boolean"),
+                        "description": .string(
+                            "When true, return only runs whose completionStatus is FAILED/ERRORED/INVALID "
+                                + "(recent runs are over-fetched and filtered client-side; 'limit' still caps the result). "
+                                + "Use this to skip past long stretches of green builds."),
+                    ]),
+                ]),
+                "required": .array([.string("workflow_id")]),
+            ])
+        ),
+        Tool(
+            name: "asc_ci_list_test_plans",
+            description: """
+                List the test plans a workflow runs, flattened from its TEST actions: \
+                per action the scheme, the selection kind (USE_SCHEME_SETTINGS / SPECIFIC_TEST_PLANS / …), \
+                and the test-plan names. Use this to diagnose test-target routing (e.g. which \
+                .xctestplan Xcode Cloud actually executed).
+                """,
+            inputSchema: .object([
+                "type": .string("object"),
+                "properties": .object([
+                    "workflow_id": .object([
+                        "type": .string("string"),
+                        "description": .string("Xcode Cloud workflow id (from asc_ci_list_workflows)."),
+                    ])
                 ]),
                 "required": .array([.string("workflow_id")]),
             ])
@@ -208,10 +234,59 @@ enum CITools {
 
     // MARK: - Dispatch
 
+    /// Runs a tool, then appends a rate-limit heads-up block when the last client
+    /// used is close to App Store Connect's hourly throttle point. The agent sees
+    /// this as a second text block and can pause broad scans before it stalls.
     static func call(
         name: String,
         arguments: [String: Value],
         makeClient: ClientProvider = CITools.defaultClient
+    ) async throws -> CallTool.Result {
+        let probe = ClientProbe()
+        let provider: ClientProvider = {
+            let client = try makeClient()
+            probe.capture(client.rateLimiter)
+            return client
+        }
+
+        let result = try await dispatch(name: name, arguments: arguments, makeClient: provider)
+
+        guard let limiter = probe.rateLimiter,
+            let status = await limiter.status(),
+            status.isNearLimit
+        else { return result }
+
+        let hint =
+            "⚠️ App Store Connect API rate limit: \(status.usedPercent)% used "
+            + "(\(status.remaining)/\(status.limit) requests left this hour). "
+            + "Requests pause automatically at \(Int((status.throttleThreshold * 100).rounded()))% — "
+            + "consider narrowing further calls."
+        return .init(content: result.content + [.text(hint)], isError: result.isError)
+    }
+
+    /// Holds the `RateLimiter` of the client the current call constructed, if any.
+    /// The provider closure is `@Sendable`; a lock-guarded box keeps the capture legal.
+    private final class ClientProbe: @unchecked Sendable {
+        private let lock = NSLock()
+        private var limiter: RateLimiter?
+
+        func capture(_ limiter: RateLimiter) {
+            lock.lock()
+            defer { lock.unlock() }
+            if self.limiter == nil { self.limiter = limiter }
+        }
+
+        var rateLimiter: RateLimiter? {
+            lock.lock()
+            defer { lock.unlock() }
+            return limiter
+        }
+    }
+
+    static func dispatch(
+        name: String,
+        arguments: [String: Value],
+        makeClient: ClientProvider
     ) async throws -> CallTool.Result {
         switch name {
         case "asc_ci_list_products":
@@ -228,7 +303,15 @@ enum CITools {
             let client = try makeClient()
             let workflowID = try require(arguments, "workflow_id")
             let limit = arguments["limit"]?.intValue ?? 20
-            return try json(await client.ciBuildRuns(workflowID: workflowID, limit: limit))
+            let failedOnly = arguments["failed_only"]?.boolValue
+                ?? (arguments["failed_only"]?.stringValue == "true")
+            return try json(
+                await client.ciBuildRuns(workflowID: workflowID, limit: limit, failedOnly: failedOnly))
+
+        case "asc_ci_list_test_plans":
+            let client = try makeClient()
+            let workflowID = try require(arguments, "workflow_id")
+            return try json(await client.ciTestPlans(workflowID: workflowID))
 
         case "asc_ci_get_build_run":
             let client = try makeClient()
@@ -286,9 +369,29 @@ enum CITools {
 
     // MARK: - Helpers
 
+    /// `asc_ci_get_build_run` payload: the run and its actions, plus computed
+    /// durations so a timeout (a run near Xcode Cloud's 120-minute ceiling) is
+    /// obvious without the agent having to diff two ISO-8601 strings.
     private struct BuildRunDetail: Encodable {
         let run: CIBuildRun
         let actions: [CIBuildAction]
+
+        enum CodingKeys: String, CodingKey {
+            case run, actions, durationSeconds, actionDurationsSeconds
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(run, forKey: .run)
+            try container.encode(actions, forKey: .actions)
+            try container.encodeIfPresent(run.durationSeconds, forKey: .durationSeconds)
+            let actionDurations = actions.reduce(into: [String: Double]()) { acc, action in
+                if let seconds = action.durationSeconds { acc[action.id] = seconds }
+            }
+            if !actionDurations.isEmpty {
+                try container.encode(actionDurations, forKey: .actionDurationsSeconds)
+            }
+        }
     }
 
     static let defaultClient: ClientProvider = {
