@@ -23,13 +23,44 @@ extension ASCError: LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .apiError(let statusCode, let body):
-            return "App Store Connect API error (\(statusCode)): \(body)"
+            let detail = Self.ascErrorDetail(from: body) ?? body
+            return "App Store Connect API error (\(statusCode)): \(detail)"
         case .jwtGenerationFailed(let underlying):
             return "JWT generation failed: \(underlying.localizedDescription)"
         case .uploadFailed(let asset, let reason):
             return "Upload failed for \(asset): \(reason)"
         case .invalidConfiguration(let reason):
             return "Invalid configuration: \(reason)"
+        }
+    }
+}
+
+extension ASCError {
+    /// Pulls the first entry's `detail` (and `title`, when it adds information) out of a
+    /// JSON:API error body, so a thrown `apiError` names the actual failure — e.g.
+    /// "The specified pre-release build could not be added." — instead of only a status
+    /// code plus an opaque blob. Returns `nil` when the body is not a JSON:API error
+    /// document, leaving callers to fall back to the raw body.
+    static func ascErrorDetail(from body: String) -> String? {
+        guard let data = body.data(using: .utf8),
+            let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let errors = root["errors"] as? [[String: Any]],
+            let first = errors.first
+        else { return nil }
+
+        let detail = (first["detail"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let title = (first["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let extra = errors.count > 1 ? " (+\(errors.count - 1) more)" : ""
+
+        switch (title, detail) {
+        case (let title?, let detail?) where !title.isEmpty && !detail.isEmpty && title != detail:
+            return "\(title): \(detail)\(extra)"
+        case (_, let detail?) where !detail.isEmpty:
+            return detail + extra
+        case (let title?, _) where !title.isEmpty:
+            return title + extra
+        default:
+            return nil
         }
     }
 }

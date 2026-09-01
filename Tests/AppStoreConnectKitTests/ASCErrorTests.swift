@@ -15,6 +15,38 @@ struct ASCErrorTests {
         #expect(error.errorDescription == "App Store Connect API error (429): rate limited")
     }
 
+    @Test("apiError description surfaces errors[0].detail from a JSON:API body verbatim")
+    func apiErrorSurfacesJSONAPIDetail() {
+        let body = """
+            {"errors":[{"status":"409","code":"ENTITY_ERROR.RELATIONSHIP.INVALID",\
+            "title":"The provided entity includes a relationship with an invalid value",\
+            "detail":"The specified pre-release build could not be added."}]}
+            """
+        let error = ASCError.apiError(statusCode: 409, body: body)
+        let description = error.errorDescription ?? ""
+        #expect(description.hasPrefix("App Store Connect API error (409):"))
+        #expect(description.contains("The specified pre-release build could not be added."))
+        // The opaque JSON blob should not leak through once a detail is found.
+        #expect(!description.contains("\"errors\""))
+    }
+
+    @Test("apiError description falls back to the raw body when it is not a JSON:API error")
+    func apiErrorFallsBackToRawBody() {
+        let error = ASCError.apiError(statusCode: 500, body: "upstream exploded")
+        #expect(error.errorDescription == "App Store Connect API error (500): upstream exploded")
+    }
+
+    @Test("apiError description counts additional JSON:API errors")
+    func apiErrorCountsAdditionalErrors() {
+        let body = """
+            {"errors":[{"title":"A","detail":"first problem"},{"title":"B","detail":"second problem"}]}
+            """
+        let error = ASCError.apiError(statusCode: 400, body: body)
+        let description = error.errorDescription ?? ""
+        #expect(description.contains("first problem"))
+        #expect(description.contains("(+1 more)"))
+    }
+
     @Test("jwtGenerationFailed description wraps the underlying error")
     func jwtErrorDescription() {
         let error = ASCError.jwtGenerationFailed(underlying: Underlying())

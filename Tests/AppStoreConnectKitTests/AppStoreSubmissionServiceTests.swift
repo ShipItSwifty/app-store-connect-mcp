@@ -64,6 +64,108 @@ struct AppStoreSubmissionServiceTests {
         #expect(report.candidateBuild == nil)
     }
 
+    @Test("Latest review submission is chosen by submittedDate, and a nil submittedDate counts as newest")
+    func picksMostRecentSubmission() async throws {
+        let client = makeClient(responses: [
+            appResponse(),
+            .json([
+                "data": [["id": "ver-1", "attributes": ["versionString": "1.0.0", "appStoreState": "IN_REVIEW"]]]
+            ]),
+            // Deliberately out of order; the in-progress one (no submittedDate) must win.
+            .json([
+                "data": [
+                    ["id": "sub-old", "attributes": ["state": "COMPLETE", "submittedDate": "2026-01-01T00:00:00Z"]],
+                    ["id": "sub-inprogress", "attributes": ["state": "READY_FOR_REVIEW"]],
+                    ["id": "sub-mid", "attributes": ["state": "COMPLETE", "submittedDate": "2026-05-01T00:00:00Z"]],
+                ]
+            ]),
+            .json(["data": [["id": "item-1", "attributes": ["state": "READY_FOR_REVIEW"]]]]),
+            .json(["data": ["id": "b1", "attributes": ["version": "9", "processingState": "VALID", "expired": false]]]),
+        ])
+        let report = try await AppStoreSubmissionService(client: client).status(bundleID: "com.example.app")
+        #expect(report.reviewSubmission?.id == "sub-inprogress")
+    }
+
+    @Test("Among submitted submissions the newest submittedDate wins")
+    func picksNewestSubmittedDate() async throws {
+        let client = makeClient(responses: [
+            appResponse(),
+            .json([
+                "data": [["id": "ver-1", "attributes": ["versionString": "1.0.0", "appStoreState": "IN_REVIEW"]]]
+            ]),
+            .json([
+                "data": [
+                    ["id": "sub-old", "attributes": ["state": "COMPLETE", "submittedDate": "2026-01-01T00:00:00Z"]],
+                    ["id": "sub-new", "attributes": ["state": "IN_REVIEW", "submittedDate": "2026-08-01T00:00:00Z"]],
+                    ["id": "sub-mid", "attributes": ["state": "COMPLETE", "submittedDate": "2026-05-01T00:00:00Z"]],
+                ]
+            ]),
+            .json(["data": [[String: String]]()]),
+            .json(["data": ["id": "b1", "attributes": ["version": "9", "processingState": "VALID", "expired": false]]]),
+        ])
+        let report = try await AppStoreSubmissionService(client: client).status(bundleID: "com.example.app")
+        #expect(report.reviewSubmission?.id == "sub-new")
+    }
+
+    @Test("PREPARE_FOR_SUBMISSION with an INTERNAL_ONLY candidate build flags App Store ineligibility")
+    func internalOnlyCandidateBuild() async throws {
+        let client = makeClient(responses: [
+            appResponse(),
+            .json([
+                "data": [
+                    [
+                        "id": "ver-1",
+                        "attributes": ["versionString": "1.0.0", "appStoreState": "PREPARE_FOR_SUBMISSION"],
+                    ]
+                ]
+            ]),
+            .json(["data": [[String: String]]()]),  // reviewSubmissions — none
+            .json(["data": NSNull()]),  // /v1/appStoreVersions/ver-1/build — nothing attached
+            .json([
+                "data": [
+                    [
+                        "id": "b1",
+                        "attributes": [
+                            "version": "5", "processingState": "VALID", "expired": false,
+                            "buildAudienceType": "INTERNAL_ONLY",
+                        ],
+                    ]
+                ]
+            ]),
+        ])
+        let report = try await AppStoreSubmissionService(client: client).status(bundleID: "com.example.app")
+        #expect(report.buildAttached == false)
+        #expect(report.candidateBuild?.buildAudienceType == "INTERNAL_ONLY")
+        #expect(report.candidateBuild?.audienceNote?.contains("INTERNAL_ONLY") == true)
+        #expect(report.diagnosis.contains("buildAudienceType"))
+        #expect(report.diagnosis.contains("INTERNAL_ONLY"))
+        #expect(report.needsDeveloperAction)
+    }
+
+    @Test("An attached APP_STORE_ELIGIBLE build states its eligibility plainly")
+    func attachedBuildAudienceNote() async throws {
+        let client = makeClient(responses: [
+            appResponse(),
+            .json([
+                "data": [["id": "ver-1", "attributes": ["versionString": "1.0.0", "appStoreState": "WAITING_FOR_REVIEW"]]]
+            ]),
+            .json(["data": [[String: String]]()]),
+            .json([
+                "data": [
+                    "id": "b1",
+                    "attributes": [
+                        "version": "42", "processingState": "VALID", "expired": false,
+                        "buildAudienceType": "APP_STORE_ELIGIBLE",
+                    ],
+                ]
+            ]),
+        ])
+        let report = try await AppStoreSubmissionService(client: client).status(bundleID: "com.example.app")
+        #expect(report.buildAttached == true)
+        #expect(report.attachedBuild?.buildAudienceType == "APP_STORE_ELIGIBLE")
+        #expect(report.attachedBuild?.audienceNote?.contains("APP_STORE_ELIGIBLE") == true)
+    }
+
     @Test("Throws when the app cannot be resolved by bundle id")
     func appNotFound() async {
         let client = makeClient(responses: [.json(["data": [String]()])])

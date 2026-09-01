@@ -88,12 +88,46 @@ public struct AppStoreSubmissionService: Sendable {
             public let processingState: String?
             /// Whether the build has expired.
             public let expired: Bool?
+            /// `APP_STORE_ELIGIBLE` or `INTERNAL_ONLY`, when App Store Connect reports it.
+            ///
+            /// An `INTERNAL_ONLY` build was prepared for TestFlight only and cannot be
+            /// attached to an App Store version.
+            public let buildAudienceType: String?
+            /// Plain-language reading of ``buildAudienceType``: whether the build is App
+            /// Store eligible and, when it is not, the usual cause and that it cannot be
+            /// fixed after upload. `nil` when the audience type is unknown.
+            public let audienceNote: String?
 
-            public init(id: String, version: String?, processingState: String?, expired: Bool?) {
+            public init(
+                id: String,
+                version: String?,
+                processingState: String?,
+                expired: Bool?,
+                buildAudienceType: String? = nil
+            ) {
                 self.id = id
                 self.version = version
                 self.processingState = processingState
                 self.expired = expired
+                self.buildAudienceType = buildAudienceType
+                self.audienceNote = Self.audienceNote(for: buildAudienceType)
+            }
+
+            /// Interprets a `buildAudienceType` value for a human reader.
+            static func audienceNote(for audienceType: String?) -> String? {
+                switch audienceType?.uppercased() {
+                case "INTERNAL_ONLY":
+                    return
+                        "INTERNAL_ONLY — not App Store eligible. Common cause: the archive/CI workflow prepared "
+                        + "the build for TestFlight only, not App Store. This cannot be fixed after upload; adjust "
+                        + "the workflow's distribution preparation to include App Store and re-archive."
+                case "APP_STORE_ELIGIBLE":
+                    return "APP_STORE_ELIGIBLE — eligible for App Store submission."
+                case .some(let other) where !other.isEmpty:
+                    return other
+                default:
+                    return nil
+                }
             }
         }
 
@@ -326,13 +360,26 @@ public struct AppStoreSubmissionService: Sendable {
         case ("PREPARE_FOR_SUBMISSION", _), ("", ""):
             if buildAttached == false {
                 let candidateNote: String
+                let candidateIsInternalOnly =
+                    candidateBuild?.buildAudienceType?.uppercased() == "INTERNAL_ONLY"
                 switch candidateBuild?.processingState?.uppercased() {
+                case "VALID" where candidateIsInternalOnly:
+                    candidateNote =
+                        " The newest build for this version (\(candidateBuild?.version ?? "?")) is VALID but "
+                        + "INTERNAL_ONLY — not App Store eligible. Common cause: the archive/CI workflow prepared the "
+                        + "build for TestFlight only, not App Store. This cannot be fixed after upload; adjust the "
+                        + "workflow's distribution preparation to include App Store and re-archive."
                 case "VALID":
                     candidateNote =
                         " Build \(candidateBuild?.version ?? "?") exists for this version and is VALID, so a "
                         + "candidate is available — if it still won't attach in App Store Connect either, the cause is "
                         + "usually outside the App Store Connect API: an incomplete App Privacy (data-collection) "
                         + "section, a pending agreement in Agreements, Tax, and Banking, or unresolved export compliance."
+                case .some(let state) where candidateIsInternalOnly:
+                    candidateNote =
+                        " The newest build for this version (\(candidateBuild?.version ?? "?")) is \(state) and "
+                        + "INTERNAL_ONLY — not App Store eligible even once it finishes processing. The archive/CI "
+                        + "workflow prepared it for TestFlight only; adjust the workflow to include App Store and re-archive."
                 case .some(let state):
                     candidateNote =
                         " The newest build for this version (\(candidateBuild?.version ?? "?")) is \(state), not VALID — "
@@ -343,8 +390,10 @@ public struct AppStoreSubmissionService: Sendable {
                         + "it to finish processing, then attach it."
                 }
                 return
-                    "\(versionLabel) is in PREPARE_FOR_SUBMISSION with no build selected. Attach a processed build to "
-                    + "the version, finish the metadata, then create a review submission." + candidateNote
+                    "\(versionLabel) is in PREPARE_FOR_SUBMISSION. No build is attached to this version. If no builds "
+                    + "are selectable in App Store Connect, verify the builds are App Store eligible (check each build's "
+                    + "buildAudienceType — INTERNAL_ONLY builds cannot be submitted). Attach a processed build to the "
+                    + "version, finish the metadata, then create a review submission." + candidateNote
             }
             return
                 "\(versionLabel) is still in PREPARE_FOR_SUBMISSION and has not been submitted. Finish the metadata, "
@@ -402,7 +451,8 @@ public struct AppStoreSubmissionService: Sendable {
             id: resource.id,
             version: resource.attributes?.version,
             processingState: resource.attributes?.processingState,
-            expired: resource.attributes?.expired
+            expired: resource.attributes?.expired,
+            buildAudienceType: resource.attributes?.buildAudienceType
         )
     }
 }

@@ -66,6 +66,10 @@ struct BuildResource: Codable, Sendable {
         let version: String?
         let processingState: String?
         let expired: Bool?
+        /// `APP_STORE_ELIGIBLE` or `INTERNAL_ONLY`. An `INTERNAL_ONLY` build was prepared
+        /// for TestFlight only and can never be attached to an App Store version — the
+        /// `appStoreVersions` relationship rejects it with a `409 ENTITY_ERROR`.
+        let buildAudienceType: String?
     }
 }
 
