@@ -19,6 +19,8 @@ Two products, both public-facing:
 
 ## Install (library)
 
+**Requires Swift 6.3+** (macOS 15+ / Linux).
+
 ```swift
 .package(url: "https://github.com/maniramezan/app-store-connect-mcp.git", from: "0.1.0"),
 ```

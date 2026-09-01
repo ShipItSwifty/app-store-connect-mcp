@@ -5,6 +5,14 @@ macOS + Linux), `AppStoreConnectUploadKit` (macOS-only IPA upload), and the
 `app-store-connect-mcp` executable (an MCP server over the Xcode Cloud read API).
 `AppStoreConnectKit` is consumed by ShipItSwifty, so its public API is real API.
 
+## Toolchain
+
+`swift-tools-version: 6.3`, language mode 6, macOS 15+. Both CI legs (the `macos-26`
+runner and the `swift:6.3-noble` container) are on 6.3.3, so the manifest's floor and
+CI's toolchain are the same version — bumping tools-version past what the Linux
+container image provides breaks the build at manifest-parse time, before any
+diagnostic you'd recognise.
+
 ## Conventions
 
 - **Tags and versions are bare SemVer — never a `v` prefix.** `0.2.0`, not `v0.2.0`.

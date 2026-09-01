@@ -1,4 +1,4 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 6.3
 // app-store-connect-mcp — a reusable App Store Connect / Xcode Cloud client and an MCP server.
 
 import PackageDescription
