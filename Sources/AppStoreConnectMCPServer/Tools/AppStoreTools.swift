@@ -317,7 +317,7 @@ enum AppStoreTools {
     ///
     /// An agent that has only a bundle id shouldn't have to make a discovery call first,
     /// and one that already has an app id shouldn't pay for a lookup it doesn't need.
-    private static func resolveAppID(_ args: ToolArguments, client: AppStoreConnectClient) async throws -> String {
+    static func resolveAppID(_ args: ToolArguments, client: AppStoreConnectClient) async throws -> String {
         if let appID = args.string("app_id") { return appID }
         guard let bundleID = args.string("bundle_id") else {
             throw ASCError.invalidConfiguration(reason: "Pass either 'app_id' or 'bundle_id'.")

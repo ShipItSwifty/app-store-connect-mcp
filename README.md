@@ -51,6 +51,7 @@ the REST plumbing. On top of the generic `get` / `post` / `patch` it offers:
 | **App Store versions** | `appStoreVersions(appID:platform:limit:)`, `appStoreVersionLocalizations(versionID:limit:)` |
 | **Builds & TestFlight** | `builds(appID:version:preReleaseVersion:processingState:limit:)`, `buildBetaDetail(buildID:)`, `betaBuildLocalizations(buildID:)`, `betaGroups(appID:)`, `betaTesters(betaGroupID:)`, `betaFeedback(appID:kind:…)` |
 | **Customer reviews** | `customerReviews(appID:rating:territory:limit:)` |
+| **Production diagnostics** | `diagnosticSignatures(buildID:diagnosticType:limit:)`, `diagnosticLogs(signatureID:limit:)`, `diagnosticLogSummary(signatureID:…)`, `betaCrashLog(feedbackID:)`, `perfPowerMetrics(appID:…)`, `perfPowerMetricsSummary(appID:…)` |
 | **Xcode Cloud (read)** | `ciProducts`, `ciWorkflows`, `ciWorkflow(id:)`, `ciBuildRuns(workflowID:limit:failedOnly:)`, `ciBuildRun(id:)`, `ciBuildActions`, `ciIssues`, `ciTestResults`, `ciArtifacts`, `ciTestPlans(workflowID:)` |
 | **Aggregated diagnostics** | `ciFailureReport(buildRunID:workflowName:)`, `ciFailureReportWithLogs(…)`, `ciLatestFailureReport(workflowID:productID:appID:)` |
 | **Artifacts & logs** | `downloadArtifact(from:)`, `analyzeArtifactLog(from:parser:)`, `CILogParser` |
@@ -178,6 +179,10 @@ Set these environment variables (same names as `altool` / Fastlane):
 | `asc_list_beta_testers` | `beta_group_id`, `limit?` | testers in a group, with invite type and state |
 | `asc_list_beta_feedback` | `app_id?` / `bundle_id?`, `kind?` (`crash` \| `screenshot`), `build_id?`, `device_model?`, `os_version?`, `limit?` | TestFlight tester feedback newest first — crash submissions with device state, or screenshots with the tester's comment and image URLs |
 | `asc_list_customer_reviews` | `app_id?` / `bundle_id?`, `rating?`, `territory?`, `limit?` | App Store reviews newest first, filterable by star rating and storefront |
+| `asc_list_diagnostic_signatures` | `build_id?` / `app_id?` / `bundle_id?`, `diagnostic_type?`, `limit?` | crash, hang and disk-write signatures real devices reported against a build, with `weight` and a regression insight (falls back to the app's newest build) |
+| `asc_get_diagnostic_logs` | `signature_id`, `limit?`, `max_frames?` | the call stacks behind a signature, **reduced to the frames Apple blames** — symbol, binary, file + line where symbolicated — with each report's app/OS version and device. `totalFrames` says how much was elided |
+| `asc_get_beta_crash_log` | `feedback_id` | the symbolicated crash log attached to a TestFlight crash submission; `{"available": false}` while Apple is still attaching it |
+| `asc_perf_power_metrics` | `app_id?` / `bundle_id?`, `metric_type?`, `platform?`, `device_type?`, `raw?` | launch time, hang rate, memory, disk, battery from real devices: Apple's flagged regressions plus the newest measurement per percentile, with unit and goal band. `raw` returns the unreduced payload |
 | `asc_rate_limit_status` | — | this key's hourly rate-limit position before you start a broad scan |
 | `asc_api_get` | `path`, `query?` | **escape hatch**: any authenticated `GET` against `/v1/…` or `/v2/…`, returned verbatim — appInfos, prices, in-app purchases, subscriptions, users, devices, certificates, and anything Apple ships next. Read-only by construction; a `links.next` URL can be pasted straight back as `path` |
 

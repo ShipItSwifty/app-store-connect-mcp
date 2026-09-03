@@ -71,6 +71,14 @@ the collection is exhausted or `limit` resources have been collected. A non-nil
 - ``CILogAnalysis``
 - ``CILogFinding``
 
+### Production diagnostics
+
+- ``ASCDiagnosticSignature``
+- ``DiagnosticLogsResponse``
+- ``DiagnosticLogSummary``
+- ``PerfPowerMetricsResponse``
+- ``PerfPowerMetricsSummary``
+
 ### App Store release and review
 
 - ``AppStoreReleaseService``

@@ -116,6 +116,181 @@ struct ModelInitTests {
         #expect(feedback.attributes?.batteryPercentage == 42)
     }
 
+    @Test("Diagnostics model initializers populate their nested types")
+    func diagnosticModels() {
+        let signature = ASCDiagnosticSignature(
+            id: "sig-1",
+            attributes: .init(
+                diagnosticType: "HANGS",
+                signature: "abc",
+                weight: 12.5,
+                insight: .init(
+                    direction: "UP",
+                    insightType: "REGRESSION",
+                    referenceVersions: [.init(version: "1.3.0", value: 3)]
+                )
+            )
+        )
+        #expect(signature.attributes?.insight?.referenceVersions?.first?.value == 3)
+
+        let frame = DiagnosticLogsResponse.ProductData.Log.CallStackTree.Frame(
+            binaryName: "MyApp",
+            symbolName: "loadEverything()",
+            fileName: "AppDelegate.swift",
+            lineNumber: "42",
+            address: "0x1",
+            binaryUUID: "u",
+            offsetIntoBinaryTextSegment: "1",
+            offsetIntoSymbol: "2",
+            rawFrame: "raw",
+            insightsCategory: "c",
+            sampleCount: 90,
+            isBlameFrame: true,
+            subFrames: []
+        )
+        let logs = DiagnosticLogsResponse(
+            version: "1.0",
+            productData: [
+                .init(
+                    signatureId: "sig-1",
+                    diagnosticLogs: [
+                        .init(
+                            diagnosticMetaData: .init(
+                                appVersion: "1.4.0",
+                                buildVersion: "142",
+                                bundleId: "com.example.app",
+                                deviceType: "iPhone14,3",
+                                osVersion: "18.2",
+                                platformArchitecture: "arm64e",
+                                event: "Hang",
+                                eventDetail: "2500ms",
+                                writesCaused: nil
+                            ),
+                            callStackTree: [
+                                .init(callStackPerThread: true, callStacks: [.init(callStackRootFrames: [frame])])
+                            ]
+                        )
+                    ]
+                )
+            ]
+        )
+        #expect(logs.productData?.first?.diagnosticLogs?.first?.callStackTree?.first?.callStacks?.count == 1)
+
+        // The summary is built by hand here; `DiagnosticsAPITests` covers the reduction.
+        let summary = DiagnosticLogSummary(
+            signatureID: "sig-1",
+            reports: [
+                .init(
+                    appVersion: "1.4.0",
+                    buildVersion: "142",
+                    osVersion: "18.2",
+                    deviceType: "iPhone14,3",
+                    event: "Hang",
+                    eventDetail: "2500ms",
+                    writesCaused: "512 MB",
+                    blameFrames: [
+                        .init(
+                            symbolName: "loadEverything()",
+                            binaryName: "MyApp",
+                            fileName: "AppDelegate.swift",
+                            lineNumber: "42",
+                            sampleCount: 90,
+                            depth: 1
+                        )
+                    ],
+                    totalFrames: 3
+                )
+            ]
+        )
+        #expect(summary.reports.first?.blameFrames.first?.depth == 1)
+
+        let metrics = PerfPowerMetricsResponse(
+            version: "1.0",
+            insights: .init(
+                regressions: [
+                    .init(
+                        metric: "launchTime",
+                        metricCategory: "LAUNCH",
+                        subSystemLabel: nil,
+                        latestVersion: "1.4.0",
+                        maxLatestVersionValue: 1600,
+                        referenceVersions: "1.3.0",
+                        highImpact: true,
+                        summaryString: "50% slower",
+                        populations: [
+                            .init(
+                                device: "iPhone",
+                                percentile: "P90",
+                                deltaPercentage: -55,
+                                latestVersionValue: 1600,
+                                referenceAverageValue: 800,
+                                summaryString: "slower"
+                            )
+                        ]
+                    )
+                ],
+                trendingUp: []
+            ),
+            productData: [
+                .init(
+                    platform: "IOS",
+                    metricCategories: [
+                        .init(
+                            identifier: "LAUNCH",
+                            metrics: [
+                                .init(
+                                    identifier: "launchTime",
+                                    unit: .init(identifier: "ms", displayName: "milliseconds"),
+                                    goalKeys: [.init(goalKey: "GOOD", lowerBound: 0, upperBound: 1000)],
+                                    datasets: [
+                                        .init(
+                                            filterCriteria: .init(
+                                                device: "iPhone14,3",
+                                                deviceMarketingName: "iPhone 13 Pro",
+                                                percentile: "P90"
+                                            ),
+                                            points: [
+                                                .init(version: "1.4.0", value: 1600, errorMargin: 10, goal: "POOR")
+                                            ]
+                                        )
+                                    ]
+                                )
+                            ]
+                        )
+                    ]
+                )
+            ]
+        )
+        #expect(metrics.insights?.regressions?.first?.populations?.first?.deltaPercentage == -55)
+
+        let metricsSummary = PerfPowerMetricsSummary(
+            regressions: [
+                .init(
+                    metric: "launchTime",
+                    category: "LAUNCH",
+                    summary: "50% slower",
+                    highImpact: true,
+                    latestVersion: "1.4.0",
+                    worstDeltaPercentage: -55
+                )
+            ],
+            metrics: [
+                .init(
+                    category: "LAUNCH",
+                    metric: "launchTime",
+                    platform: "IOS",
+                    device: "iPhone 13 Pro",
+                    percentile: "P90",
+                    version: "1.4.0",
+                    value: 1600,
+                    unit: "milliseconds",
+                    goal: "POOR"
+                )
+            ]
+        )
+        #expect(metricsSummary.metrics.first?.goal == "POOR")
+    }
+
     @Test("Response envelopes and pagination links initialize")
     func envelopes() {
         let links = PagedLinks(self: "s", next: "n", first: "f")
