@@ -47,6 +47,7 @@ public actor AppStoreConnectClient {
     /// extensions (e.g. artifact download) can reuse the configured session.
     let session: URLSession
     private let tokenProvider: (@Sendable () async throws -> String)?
+    private let retryPolicy: TransientRetryPolicy
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
     private let logger = Logger.forType(subsystem: "AppStoreConnectKit", AppStoreConnectClient.self)
@@ -69,13 +70,16 @@ public actor AppStoreConnectClient {
     ///   - serverURL: Optional proxy server URL (for use with `shipit-server`).
     ///   - session: URL session used for outbound HTTP requests.
     ///   - tokenProvider: Optional auth token provider used instead of `JWTGenerator`.
+    ///   - retryPolicy: How `429`/`5xx` responses are retried. Pass ``TransientRetryPolicy/disabled``
+    ///     to perform every request exactly once.
     public init(
         keyID: String,
         issuerID: String,
         privateKeyData: Data,
         serverURL: URL? = nil,
         session: URLSession = .shared,
-        tokenProvider: (@Sendable () async throws -> String)? = nil
+        tokenProvider: (@Sendable () async throws -> String)? = nil,
+        retryPolicy: TransientRetryPolicy = .default
     ) {
         self.keyID = keyID
         self.issuerID = issuerID
@@ -83,6 +87,7 @@ public actor AppStoreConnectClient {
         self.serverURL = serverURL
         self.session = session
         self.tokenProvider = tokenProvider
+        self.retryPolicy = retryPolicy
         self.jwtGenerator = JWTGenerator(keyID: keyID, issuerID: issuerID, privateKeyData: privateKeyData)
         self.rateLimiter = RateLimiter()
 
@@ -185,6 +190,42 @@ public actor AppStoreConnectClient {
         return try await perform(request)
     }
 
+    /// Perform a DELETE request.
+    ///
+    /// App Store Connect answers a successful delete with `204 No Content`, so this
+    /// returns nothing rather than a decoded body.
+    ///
+    /// - Parameter path: The API path (e.g. `"/v1/betaTesters/{id}"`).
+    /// - Throws: ``ASCError/apiError(statusCode:body:)`` on non-2xx responses.
+    public func delete(_ path: String) async throws {
+        let request = try await buildRequest(method: "DELETE", path: path, query: [:], body: nil as EmptyBody?)
+        let _: NoContentResponse = try await perform(request)
+    }
+
+    /// Perform a DELETE request that carries a body, as the relationship endpoints
+    /// (`…/relationships/…`) require.
+    public func delete<Body: Encodable & Sendable>(_ path: String, body: Body) async throws {
+        let request = try await buildRequest(method: "DELETE", path: path, query: [:], body: body)
+        let _: NoContentResponse = try await perform(request)
+    }
+
+    /// Perform a GET and return the response body verbatim, without decoding it.
+    ///
+    /// This is the escape hatch for the parts of the App Store Connect API this package
+    /// has no typed model for: the caller (for example an AI agent driving the MCP
+    /// server) gets Apple's JSON as-is, including `included` sidecars and any attribute
+    /// added after this package was built.
+    ///
+    /// - Parameters:
+    ///   - path: The API path (e.g. `"/v1/apps"`).
+    ///   - query: Query parameters, passed through untouched — `filter[…]`, `fields[…]`,
+    ///     `include`, `sort`, `limit` all work.
+    /// - Returns: The raw 2xx response body.
+    public func getRaw(_ path: String, query: [String: String] = [:]) async throws -> Data {
+        let request = try await buildRequest(method: "GET", path: path, query: query, body: nil as EmptyBody?)
+        return try await performData(request).data
+    }
+
     // MARK: - Asset Upload
 
     /// Upload an asset (IPA, screenshot, preview) using the multi-step protocol.
@@ -256,49 +297,89 @@ public actor AppStoreConnectClient {
     }
 
     private func perform<T: Decodable & Sendable>(_ request: URLRequest) async throws -> T {
-        await rateLimiter.throttleIfNeeded()
-
-        logger.debug("ASC API \(request.httpMethod ?? "GET") \(request.url?.path ?? "")")
-
-        let (data, response) = try await session.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw ASCError.apiError(statusCode: 0, body: "Invalid response type")
-        }
-
-        // Update rate limiter from response headers
-        let headers = httpResponse.allHeaderFields.reduce(into: [String: String]()) { dict, pair in
-            if let key = pair.key as? String, let value = pair.value as? String {
-                dict[key] = value
-            }
-        }
-        await rateLimiter.update(from: headers)
-
-        logger.debug("ASC API response: \(httpResponse.statusCode)")
-
-        guard (200..<300).contains(httpResponse.statusCode) else {
-            let body = String(decoding: data, as: UTF8.self)
-            logger.error("ASC API error \(httpResponse.statusCode): \(body)")
-            throw ASCError.apiError(statusCode: httpResponse.statusCode, body: body)
-        }
+        let (data, statusCode) = try await performData(request)
 
         if data.isEmpty {
             guard let emptyResponseType = T.self as? any EmptyBodyResponse.Type else {
                 throw ASCError.apiError(
-                    statusCode: httpResponse.statusCode,
+                    statusCode: statusCode,
                     body: "Received empty response body for \(request.httpMethod ?? "GET") \(request.url?.path ?? "")"
                 )
             }
             guard let result = emptyResponseType.init() as? T else {
                 throw ASCError.apiError(
-                    statusCode: httpResponse.statusCode,
+                    statusCode: statusCode,
                     body: "Empty-body response type mismatch: expected \(T.self)"
                 )
             }
             return result
         }
 
-        return try decoder.decode(T.self, from: data)
+        do {
+            return try decoder.decode(T.self, from: data)
+        } catch let decodingError as DecodingError {
+            // A raw `DecodingError` names a coding path and nothing else; an agent (or a
+            // human) needs to know *which* response failed to decode to act on it.
+            throw ASCError.decodingFailed(
+                path: request.url?.path ?? "",
+                type: String(describing: T.self),
+                underlying: decodingError
+            )
+        }
+    }
+
+    /// Sends a request, retrying transient failures, and returns the raw 2xx body.
+    ///
+    /// - Throws: ``ASCError/apiError(statusCode:body:)`` on a non-2xx response that the
+    ///   retry policy did not (or could no longer) retry.
+    private func performData(_ request: URLRequest) async throws -> (data: Data, statusCode: Int) {
+        var attempt = 1
+        while true {
+            await rateLimiter.throttleIfNeeded()
+
+            logger.debug("ASC API \(request.httpMethod ?? "GET") \(request.url?.path ?? "")")
+
+            let (data, response) = try await session.data(for: request)
+
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw ASCError.apiError(statusCode: 0, body: "Invalid response type")
+            }
+
+            // Update rate limiter from response headers
+            let headers = httpResponse.allHeaderFields.reduce(into: [String: String]()) { dict, pair in
+                if let key = pair.key as? String, let value = pair.value as? String {
+                    dict[key] = value
+                }
+            }
+            await rateLimiter.update(from: headers)
+
+            logger.debug("ASC API response: \(httpResponse.statusCode)")
+
+            if (200..<300).contains(httpResponse.statusCode) {
+                return (data, httpResponse.statusCode)
+            }
+
+            let method = request.httpMethod ?? "GET"
+            if attempt < retryPolicy.maxAttempts,
+                retryPolicy.shouldRetry(statusCode: httpResponse.statusCode, method: method)
+            {
+                let wait = retryPolicy.delay(
+                    forAttempt: attempt,
+                    retryAfter: TransientRetryPolicy.retryAfter(from: headers)
+                )
+                let path = request.url?.path ?? ""
+                logger.warning(
+                    "ASC API \(httpResponse.statusCode) on \(method) \(path); retrying in \(wait) (attempt \(attempt + 1) of \(retryPolicy.maxAttempts))"
+                )
+                try await Task.sleep(for: wait)
+                attempt += 1
+                continue
+            }
+
+            let body = String(decoding: data, as: UTF8.self)
+            logger.error("ASC API error \(httpResponse.statusCode): \(body)")
+            throw ASCError.apiError(statusCode: httpResponse.statusCode, body: body)
+        }
     }
 }
 

@@ -33,6 +33,16 @@ The API key needs a role that can read Xcode Cloud — a Team key with **Develop
 Support, or Marketing gets `403 FORBIDDEN` on the `ci*` endpoints even though App
 Store metadata calls succeed.
 
+### Retrying and raw access
+
+Requests that fail for a reason that usually clears — `429`, and the occasional bare
+`5xx` from Apple's edge — are retried with exponential backoff, honouring
+`Retry-After`; see ``TransientRetryPolicy``. Only `GET` is replayed on a `5xx`, since
+a `POST` may already have been applied.
+
+For resources this package has no typed model for, ``AppStoreConnectClient/getRaw(_:query:)``
+returns Apple's JSON verbatim.
+
 ### Pagination
 
 List endpoints return one page at a time. The typed helpers use
@@ -73,6 +83,14 @@ the collection is exhausted or `limit` resources have been collected. A non-nil
 - ``PagedLinks``
 - ``ASCApp``
 - ``ASCBuild``
+- ``ASCAppStoreVersion``
+- ``ASCAppStoreVersionLocalization``
+- ``ASCBuildBetaDetail``
+- ``ASCBetaBuildLocalization``
+- ``ASCBetaGroup``
+- ``ASCBetaTester``
+- ``ASCBetaFeedback``
+- ``ASCCustomerReview``
 - ``CIProduct``
 - ``CIWorkflow``
 - ``CIBuildRun``
@@ -83,6 +101,7 @@ the collection is exhausted or `limit` resources have been collected. A non-nil
 
 ### Supporting types
 
+- ``TransientRetryPolicy``
 - ``RetryPolicy``
 - ``UploadReservation``
 - ``UploadOperation``

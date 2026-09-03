@@ -47,12 +47,17 @@ the REST plumbing. On top of the generic `get` / `post` / `patch` it offers:
 
 | Area | Entry points |
 |---|---|
+| **Apps & discovery** | `apps(bundleID:name:limit:)`, `app(id:)` |
+| **App Store versions** | `appStoreVersions(appID:platform:limit:)`, `appStoreVersionLocalizations(versionID:limit:)` |
+| **Builds & TestFlight** | `builds(appID:version:preReleaseVersion:processingState:limit:)`, `buildBetaDetail(buildID:)`, `betaBuildLocalizations(buildID:)`, `betaGroups(appID:)`, `betaTesters(betaGroupID:)`, `betaFeedback(appID:kind:…)` |
+| **Customer reviews** | `customerReviews(appID:rating:territory:limit:)` |
 | **Xcode Cloud (read)** | `ciProducts`, `ciWorkflows`, `ciWorkflow(id:)`, `ciBuildRuns(workflowID:limit:failedOnly:)`, `ciBuildRun(id:)`, `ciBuildActions`, `ciIssues`, `ciTestResults`, `ciArtifacts`, `ciTestPlans(workflowID:)` |
 | **Aggregated diagnostics** | `ciFailureReport(buildRunID:workflowName:)`, `ciFailureReportWithLogs(…)`, `ciLatestFailureReport(workflowID:productID:appID:)` |
 | **Artifacts & logs** | `downloadArtifact(from:)`, `analyzeArtifactLog(from:parser:)`, `CILogParser` |
 | **Release management** | `AppStoreReleaseService` — see below |
 | **Review diagnostics** | `AppStoreSubmissionService.status(bundleID:)` |
 | **IPA upload** (macOS) | `IPAUploadService.uploadIPA(at:bundleID:credentials:shell:)` |
+| **Anything else** | `getRaw(_:query:)` — Apple's JSON verbatim, for resources with no typed model |
 
 #### `AppStoreReleaseService`
 
@@ -87,6 +92,14 @@ let result = try await service.submitForReview(
 for the duration of the upload and removes it afterwards — unless a key was already
 there, in which case it is left untouched. After `altool` exits, the service extracts
 `CFBundleVersion` from the IPA and polls `/v1/builds` until the new build appears.
+
+#### Transient retries
+
+`429` and the occasional bare `5xx` from Apple's edge are retried with exponential
+backoff, honouring `Retry-After` (`TransientRetryPolicy`, 3 attempts by default). Only
+`GET` is replayed on a `5xx` — a `POST`/`PATCH` may already have been applied
+server-side — while a `429`, which Apple refuses before doing any work, is retried on
+any method. Pass `retryPolicy: .disabled` to the client initializer to opt out.
 
 #### Pagination
 
@@ -134,6 +147,8 @@ Set these environment variables (same names as `altool` / Fastlane):
 
 ### Tools
 
+**Xcode Cloud**
+
 | Tool | Arguments | Returns |
 |---|---|---|
 | `asc_ci_list_products` | `app_id?` | Xcode Cloud products |
@@ -149,6 +164,27 @@ Set these environment variables (same names as `altool` / Fastlane):
 | `asc_ci_latest_failure` | `app_id?` / `product_id?` / `workflow_id?` (one required) | **triage shortcut**: resolves the scope, finds the most recent failed build run, and returns its `asc_ci_failure_report` payload plus the chosen `workflow` + `build_run_id`. Collapses the products → workflows → build runs → run → issues walk into one call; returns `{"found": false}` when nothing has failed |
 | `asc_ci_analyze_log` | `text?` **or** `download_url?` | parse raw CI log text (or a downloaded text artifact / zipped log bundle) into structured findings by kind |
 | `asc_submission_status` | `bundle_id` | diagnose where the latest App Store version stands in review: version state (`REJECTED`, `METADATA_REJECTED`, `INVALID_BINARY`, `WAITING_FOR_REVIEW`, …), review-submission state, per-item outcomes, whether the developer must act, and a plain-language next step |
+
+**App Store & TestFlight**
+
+| Tool | Arguments | Returns |
+|---|---|---|
+| `asc_list_apps` | `bundle_id?`, `name?`, `limit?` | the apps this key can see, with app id, bundle id, name, SKU, primary locale — **the discovery entry point**: every other app tool needs an id |
+| `asc_list_app_store_versions` | `app_id?` / `bundle_id?`, `platform?`, `limit?` | App Store versions newest first: version string, platform, review state, release type |
+| `asc_get_version_metadata` | `version_id`, `limit?` | per-locale store listing text: description, keywords, what's new, promotional text, URLs |
+| `asc_list_builds` | `app_id?` / `bundle_id?`, `version?`, `pre_release_version?`, `processing_state?`, `limit?` | uploaded builds newest first: processing state, upload/expiry dates, minimum OS, `buildAudienceType`, export-compliance answer |
+| `asc_testflight_build_status` | `app_id?` / `bundle_id?`, `version?` | why a build is (or isn't) available to testers: the build plus its internal/external beta states and per-locale "What to Test" notes, in one call |
+| `asc_list_beta_groups` | `app_id?` / `bundle_id?`, `limit?` | TestFlight groups: internal vs external, public link + cap, feedback enabled, auto-add-builds |
+| `asc_list_beta_testers` | `beta_group_id`, `limit?` | testers in a group, with invite type and state |
+| `asc_list_beta_feedback` | `app_id?` / `bundle_id?`, `kind?` (`crash` \| `screenshot`), `build_id?`, `device_model?`, `os_version?`, `limit?` | TestFlight tester feedback newest first — crash submissions with device state, or screenshots with the tester's comment and image URLs |
+| `asc_list_customer_reviews` | `app_id?` / `bundle_id?`, `rating?`, `territory?`, `limit?` | App Store reviews newest first, filterable by star rating and storefront |
+| `asc_rate_limit_status` | — | this key's hourly rate-limit position before you start a broad scan |
+| `asc_api_get` | `path`, `query?` | **escape hatch**: any authenticated `GET` against `/v1/…` or `/v2/…`, returned verbatim — appInfos, prices, in-app purchases, subscriptions, users, devices, certificates, and anything Apple ships next. Read-only by construction; a `links.next` URL can be pasted straight back as `path` |
+
+Every app-scoped tool accepts **either** `app_id` **or** `bundle_id` (the bundle id
+costs one extra lookup). All tools are advertised with MCP's `readOnlyHint`, so a
+host can auto-approve them instead of prompting once per lookup during an
+investigation.
 
 The server does no analysis of its own beyond normalization (`CIFailureReport`, `CILatestFailure`, `CILogParser`, `AppStoreSubmissionService`) — the calling agent reasons over the data. When a response leaves the App Store Connect hourly rate limit within 10 points of its throttle threshold, an extra text block is appended warning that further calls may stall.
 

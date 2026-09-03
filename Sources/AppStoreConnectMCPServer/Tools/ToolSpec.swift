@@ -66,8 +66,13 @@ struct ToolArguments: Sendable {
     }
 
     /// An optional integer argument, falling back to `defaultValue`.
-    func int(_ key: String, default defaultValue: Int) -> Int {
-        values[key]?.intValue ?? defaultValue
+    ///
+    /// The value is clamped to `1...max`: a host that sends `limit: 0` would otherwise
+    /// get an empty list back with no explanation, and one that sends `limit: 100000`
+    /// would walk every page of a collection and burn the hourly rate limit.
+    func int(_ key: String, default defaultValue: Int, max maxValue: Int = 200) -> Int {
+        guard let raw = values[key]?.intValue else { return defaultValue }
+        return min(max(raw, 1), maxValue)
     }
 
     /// An optional boolean argument. Tolerates the string `"true"`, which some MCP
@@ -89,17 +94,23 @@ struct ToolSpec: Sendable {
     let name: String
     let description: String
     let arguments: [ToolArgument]
+    /// Whether the tool only reads. Advertised to the host as `readOnlyHint`, which is
+    /// what lets a client auto-approve a call instead of prompting for every lookup —
+    /// worth carrying, since an investigation is dozens of calls deep.
+    let isReadOnly: Bool
     let handler: Handler
 
     init(
         name: String,
         description: String,
         arguments: [ToolArgument] = [],
+        isReadOnly: Bool = true,
         handler: @escaping Handler
     ) {
         self.name = name
         self.description = description
         self.arguments = arguments
+        self.isReadOnly = isReadOnly
         self.handler = handler
     }
 
@@ -122,6 +133,17 @@ struct ToolSpec: Sendable {
             schema["required"] = .array(required)
         }
 
-        return Tool(name: name, description: description, inputSchema: .object(schema))
+        return Tool(
+            name: name,
+            description: description,
+            inputSchema: .object(schema),
+            annotations: .init(
+                readOnlyHint: isReadOnly,
+                destructiveHint: !isReadOnly,
+                idempotentHint: isReadOnly,
+                // Every tool talks to Apple's servers, whose state this server does not own.
+                openWorldHint: true
+            )
+        )
     }
 }

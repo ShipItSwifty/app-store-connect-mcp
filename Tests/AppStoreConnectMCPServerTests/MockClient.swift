@@ -75,7 +75,9 @@ func makeMockMCPClient(_ responses: [MCPMockURLProtocol.Canned]) -> AppStoreConn
         issuerID: "ISSUER",
         privateKeyData: Data("placeholder".utf8),
         session: session,
-        tokenProvider: { "test-token" }
+        tokenProvider: { "test-token" },
+        // One queued response per request; a retry would consume the next test's.
+        retryPolicy: .disabled
     )
 }
 

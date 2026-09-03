@@ -1,0 +1,325 @@
+import Foundation
+
+// MARK: - App Store & TestFlight read models
+//
+// Public decoding shapes for the App Store / TestFlight resources the read API in
+// `AppStoreAPI.swift` returns. Attribute names match Apple's wire format exactly
+// (camelCase, no key strategy) and every attribute is optional: App Store Connect
+// only returns what a `fields[…]` selection asks for, and adds attributes over time.
+
+/// An `appStoreVersions` resource — one version of an app's App Store listing.
+public struct ASCAppStoreVersion: Codable, Sendable {
+    /// Unique identifier for this version.
+    public let id: String
+    /// Version attributes.
+    public let attributes: Attributes?
+
+    /// Creates an `ASCAppStoreVersion`.
+    public init(id: String, attributes: Attributes? = nil) {
+        self.id = id
+        self.attributes = attributes
+    }
+
+    /// Attributes of an App Store version.
+    public struct Attributes: Codable, Sendable {
+        /// The marketing version string (e.g. `"1.4.0"`).
+        public let versionString: String?
+        /// `IOS`, `MAC_OS`, `TV_OS`, `VISION_OS`.
+        public let platform: String?
+        /// The legacy review state. Newer tenants populate ``appVersionState`` instead —
+        /// read them together with ``ASCAppStoreVersion/state``.
+        public let appStoreState: String?
+        /// The current review state (`PREPARE_FOR_SUBMISSION`, `WAITING_FOR_REVIEW`,
+        /// `IN_REVIEW`, `REJECTED`, `READY_FOR_DISTRIBUTION`, …).
+        public let appVersionState: String?
+        /// `MANUAL`, `AFTER_APPROVAL`, or `SCHEDULED`.
+        public let releaseType: String?
+        /// Set when `releaseType` is `SCHEDULED`.
+        public let earliestReleaseDate: String?
+        /// Whether the version is downloadable from the App Store.
+        public let downloadable: Bool?
+        public let copyright: String?
+        public let createdDate: String?
+
+        /// Creates `ASCAppStoreVersion.Attributes`.
+        public init(
+            versionString: String? = nil,
+            platform: String? = nil,
+            appStoreState: String? = nil,
+            appVersionState: String? = nil,
+            releaseType: String? = nil,
+            earliestReleaseDate: String? = nil,
+            downloadable: Bool? = nil,
+            copyright: String? = nil,
+            createdDate: String? = nil
+        ) {
+            self.versionString = versionString
+            self.platform = platform
+            self.appStoreState = appStoreState
+            self.appVersionState = appVersionState
+            self.releaseType = releaseType
+            self.earliestReleaseDate = earliestReleaseDate
+            self.downloadable = downloadable
+            self.copyright = copyright
+            self.createdDate = createdDate
+        }
+    }
+
+    /// The version's review state, preferring whichever field this tenant populates.
+    public var state: String? {
+        attributes?.appVersionState ?? attributes?.appStoreState
+    }
+}
+
+/// An `appStoreVersionLocalizations` resource — the store listing text for one locale.
+public struct ASCAppStoreVersionLocalization: Codable, Sendable {
+    /// Unique identifier for this localization.
+    public let id: String
+    /// Localization attributes.
+    public let attributes: Attributes?
+
+    /// Creates an `ASCAppStoreVersionLocalization`.
+    public init(id: String, attributes: Attributes? = nil) {
+        self.id = id
+        self.attributes = attributes
+    }
+
+    /// Attributes of an App Store version localization.
+    public struct Attributes: Codable, Sendable {
+        public let locale: String?
+        public let description: String?
+        public let keywords: String?
+        public let whatsNew: String?
+        public let promotionalText: String?
+        public let marketingUrl: String?
+        public let supportUrl: String?
+
+        /// Creates `ASCAppStoreVersionLocalization.Attributes`.
+        public init(
+            locale: String? = nil,
+            description: String? = nil,
+            keywords: String? = nil,
+            whatsNew: String? = nil,
+            promotionalText: String? = nil,
+            marketingUrl: String? = nil,
+            supportUrl: String? = nil
+        ) {
+            self.locale = locale
+            self.description = description
+            self.keywords = keywords
+            self.whatsNew = whatsNew
+            self.promotionalText = promotionalText
+            self.marketingUrl = marketingUrl
+            self.supportUrl = supportUrl
+        }
+    }
+}
+
+/// A `buildBetaDetails` resource — a build's TestFlight distribution state.
+///
+/// This is the resource that answers "why can't my testers see this build?":
+/// `internalBuildState` / `externalBuildState` carry `WAITING_FOR_BETA_REVIEW`,
+/// `IN_BETA_REVIEW`, `REJECTED`, `IN_EXPORT_COMPLIANCE_REVIEW`, `READY_FOR_TESTING`, …
+public struct ASCBuildBetaDetail: Codable, Sendable {
+    /// Unique identifier for this resource.
+    public let id: String
+    /// Beta detail attributes.
+    public let attributes: Attributes?
+
+    /// Creates an `ASCBuildBetaDetail`.
+    public init(id: String, attributes: Attributes? = nil) {
+        self.id = id
+        self.attributes = attributes
+    }
+
+    /// Attributes of a build's beta detail.
+    public struct Attributes: Codable, Sendable {
+        /// TestFlight state for internal testers.
+        public let internalBuildState: String?
+        /// TestFlight state for external testers (drives Beta App Review).
+        public let externalBuildState: String?
+        /// Whether testers are notified automatically when the build is approved.
+        public let autoNotifyEnabled: Bool?
+
+        /// Creates `ASCBuildBetaDetail.Attributes`.
+        public init(
+            internalBuildState: String? = nil,
+            externalBuildState: String? = nil,
+            autoNotifyEnabled: Bool? = nil
+        ) {
+            self.internalBuildState = internalBuildState
+            self.externalBuildState = externalBuildState
+            self.autoNotifyEnabled = autoNotifyEnabled
+        }
+    }
+}
+
+/// A `betaBuildLocalizations` resource — the "What to Test" text for one locale.
+public struct ASCBetaBuildLocalization: Codable, Sendable {
+    /// Unique identifier for this localization.
+    public let id: String
+    /// Localization attributes.
+    public let attributes: Attributes?
+
+    /// Creates an `ASCBetaBuildLocalization`.
+    public init(id: String, attributes: Attributes? = nil) {
+        self.id = id
+        self.attributes = attributes
+    }
+
+    /// Attributes of a beta build localization.
+    public struct Attributes: Codable, Sendable {
+        public let locale: String?
+        /// The "What to Test" notes shown to testers.
+        public let whatsNew: String?
+
+        /// Creates `ASCBetaBuildLocalization.Attributes`.
+        public init(locale: String? = nil, whatsNew: String? = nil) {
+            self.locale = locale
+            self.whatsNew = whatsNew
+        }
+    }
+}
+
+/// A `customerReviews` resource — one App Store review written by a customer.
+public struct ASCCustomerReview: Codable, Sendable {
+    /// Unique identifier for this review.
+    public let id: String
+    /// Review attributes.
+    public let attributes: Attributes?
+
+    /// Creates an `ASCCustomerReview`.
+    public init(id: String, attributes: Attributes? = nil) {
+        self.id = id
+        self.attributes = attributes
+    }
+
+    /// Attributes of a customer review.
+    public struct Attributes: Codable, Sendable {
+        /// Star rating, `1...5`.
+        public let rating: Int?
+        public let title: String?
+        public let body: String?
+        public let reviewerNickname: String?
+        /// ISO 3166-1 alpha-3 storefront code (e.g. `USA`).
+        public let territory: String?
+        public let createdDate: String?
+
+        /// Creates `ASCCustomerReview.Attributes`.
+        public init(
+            rating: Int? = nil,
+            title: String? = nil,
+            body: String? = nil,
+            reviewerNickname: String? = nil,
+            territory: String? = nil,
+            createdDate: String? = nil
+        ) {
+            self.rating = rating
+            self.title = title
+            self.body = body
+            self.reviewerNickname = reviewerNickname
+            self.territory = territory
+            self.createdDate = createdDate
+        }
+    }
+}
+
+/// A TestFlight feedback submission — a crash report or a screenshot with a comment.
+///
+/// `betaFeedbackCrashSubmissions` and `betaFeedbackScreenshotSubmissions` share every
+/// attribute except the screenshot payload, so one shape decodes both.
+public struct ASCBetaFeedback: Codable, Sendable {
+    /// Unique identifier for this submission.
+    public let id: String
+    /// Feedback attributes.
+    public let attributes: Attributes?
+
+    /// Creates an `ASCBetaFeedback`.
+    public init(id: String, attributes: Attributes? = nil) {
+        self.id = id
+        self.attributes = attributes
+    }
+
+    /// Attributes of a TestFlight feedback submission.
+    public struct Attributes: Codable, Sendable {
+        /// The tester's written feedback, when they left any.
+        public let comment: String?
+        public let email: String?
+        public let createdDate: String?
+        public let deviceModel: String?
+        public let osVersion: String?
+        public let locale: String?
+        public let timeZone: String?
+        /// `IOS`, `MAC_OS`, `TV_OS`, `VISION_OS`.
+        public let appPlatform: String?
+        public let devicePlatform: String?
+        public let deviceFamily: String?
+        public let architecture: String?
+        /// The bundle id of the build the feedback came from.
+        public let buildBundleId: String?
+        /// How long the app had been running when the feedback was submitted.
+        public let appUptimeInMilliseconds: Int?
+        public let batteryPercentage: Int?
+        public let diskBytesAvailable: Int?
+        public let diskBytesTotal: Int?
+        public let connectionType: String?
+        /// Screenshot images — screenshot submissions only.
+        public let screenshots: [Screenshot]?
+
+        /// Creates `ASCBetaFeedback.Attributes`.
+        public init(
+            comment: String? = nil,
+            email: String? = nil,
+            createdDate: String? = nil,
+            deviceModel: String? = nil,
+            osVersion: String? = nil,
+            locale: String? = nil,
+            timeZone: String? = nil,
+            appPlatform: String? = nil,
+            devicePlatform: String? = nil,
+            deviceFamily: String? = nil,
+            architecture: String? = nil,
+            buildBundleId: String? = nil,
+            appUptimeInMilliseconds: Int? = nil,
+            batteryPercentage: Int? = nil,
+            diskBytesAvailable: Int? = nil,
+            diskBytesTotal: Int? = nil,
+            connectionType: String? = nil,
+            screenshots: [Screenshot]? = nil
+        ) {
+            self.comment = comment
+            self.email = email
+            self.createdDate = createdDate
+            self.deviceModel = deviceModel
+            self.osVersion = osVersion
+            self.locale = locale
+            self.timeZone = timeZone
+            self.appPlatform = appPlatform
+            self.devicePlatform = devicePlatform
+            self.deviceFamily = deviceFamily
+            self.architecture = architecture
+            self.buildBundleId = buildBundleId
+            self.appUptimeInMilliseconds = appUptimeInMilliseconds
+            self.batteryPercentage = batteryPercentage
+            self.diskBytesAvailable = diskBytesAvailable
+            self.diskBytesTotal = diskBytesTotal
+            self.connectionType = connectionType
+            self.screenshots = screenshots
+        }
+
+        /// One screenshot attached to a feedback submission.
+        public struct Screenshot: Codable, Sendable {
+            /// Time-limited download URL for the image.
+            public let url: String?
+            public let fileName: String?
+            public let fileSize: Int?
+
+            /// Creates a `Screenshot`.
+            public init(url: String? = nil, fileName: String? = nil, fileSize: Int? = nil) {
+                self.url = url
+                self.fileName = fileName
+                self.fileSize = fileSize
+            }
+        }
+    }
+}

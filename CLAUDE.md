@@ -50,6 +50,16 @@ coverage climbs, don't lower it without a reason.
   finance/sales-only keys get 403 on them while metadata calls still succeed.
 - **jwt-kit is pinned to 5.4.x on purpose.** 5.5+ pulls in ML-DSA code that needs a
   newer swift-crypto than the stable CI images carry.
+- **`betaGroups.publicLink` is a URL string, not a Bool.** It was modelled as `Bool`
+  and threw `typeMismatch` for every group with a public link enabled. Apple's
+  attribute types are worth checking against the docs JSON
+  (`developer.apple.com/tutorials/data/documentation/appstoreconnectapi/<resource>/attributes-data.dictionary.json`)
+  rather than guessed from the name.
+- **`/v1/apps/{id}/builds` rejects `sort`; `/v1/builds?filter[app]=` accepts it.** The
+  nested collection has no defined order, so `builds(appID:)` goes through the flat one.
+- **Retries are on by default** (`TransientRetryPolicy`: 429 + 5xx, `Retry-After`
+  honoured, `GET`-only for 5xx). Test helpers pass `.disabled` — a retry would eat the
+  next queued mock response and add real backoff sleeps to the suite.
 - **Apple `.p8` keys don't parse through swift-asn1 1.x.** `JWTGenerator` falls back
   to scanning the DER for the private scalar; don't "simplify" that away.
 
@@ -60,4 +70,6 @@ coverage climbs, don't lower it without a reason.
   service; per-service request bodies stay private to that file.
 - `Sources/AppStoreConnectMCPServer/Tools/` — `ToolSpec` (schema + handler in one
   value) and `CITools.specs`, the single list the server advertises and dispatches.
-  Adding a tool means adding one spec; there is no separate `switch` to update.
+  `CITools.specs` is `ciSpecs + AppStoreTools.specs`: the Xcode Cloud tools and the
+  App Store / TestFlight ones live in two files, but there is still one catalog and
+  no separate `switch` to update. Adding a tool means adding one spec.

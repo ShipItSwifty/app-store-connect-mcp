@@ -65,7 +65,13 @@ final class ResponseQueue: @unchecked Sendable {
 
 /// Builds an `AppStoreConnectClient` whose `URLSession` is backed by `MockURLProtocol`
 /// and which returns a fixed JWT (no real signing).
-func makeClient(responses: [MockHTTPResponse]) -> AppStoreConnectClient {
+/// Retrying is off by default here: most tests queue exactly one response per
+/// request and assert the error a non-2xx produces, which a retry would swallow (and
+/// pay for with a real backoff sleep). Tests that exercise retrying opt in.
+func makeClient(
+    responses: [MockHTTPResponse],
+    retryPolicy: TransientRetryPolicy = .disabled
+) -> AppStoreConnectClient {
     let queue = ResponseQueue(responses)
     let session = makeMockSession { _ in queue.next() }
     return AppStoreConnectClient(
@@ -73,7 +79,30 @@ func makeClient(responses: [MockHTTPResponse]) -> AppStoreConnectClient {
         issuerID: "ISSUER",
         privateKeyData: Data("placeholder".utf8),
         session: session,
-        tokenProvider: { "test-token" }
+        tokenProvider: { "test-token" },
+        retryPolicy: retryPolicy
+    )
+}
+
+/// Like `makeClient(responses:)` but records the full request URL (path *and* query)
+/// of every request, so tests can assert the filters and sort a helper sends.
+func makeClientRecording(
+    observedURLs: LockedBox<[String]>,
+    responses: [MockHTTPResponse],
+    retryPolicy: TransientRetryPolicy = .disabled
+) -> AppStoreConnectClient {
+    let queue = ResponseQueue(responses)
+    let session = makeMockSession { request in
+        observedURLs.mutate { $0.append(request.url?.absoluteString ?? "") }
+        return queue.next()
+    }
+    return AppStoreConnectClient(
+        keyID: "KEY",
+        issuerID: "ISSUER",
+        privateKeyData: Data("placeholder".utf8),
+        session: session,
+        tokenProvider: { "test-token" },
+        retryPolicy: retryPolicy
     )
 }
 

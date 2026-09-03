@@ -7,10 +7,12 @@ import MCP
 import FoundationNetworking
 #endif
 
-/// MCP server exposing the Xcode Cloud (App Store Connect CI) read API.
+/// MCP server exposing the App Store Connect read API — Xcode Cloud diagnostics,
+/// App Store versions and builds, TestFlight state and tester feedback, customer
+/// reviews, and a raw `GET` passthrough for everything else.
 ///
 /// The server itself performs no analysis — it is driven by an AI agent (the MCP
-/// host), which calls these tools to gather data and reason about *what broke in CI*.
+/// host), which calls these tools to gather data and reason about *what broke*.
 ///
 /// Credentials are read from the environment: `ASC_KEY_ID`, `ASC_ISSUER_ID`, and
 /// either `ASC_PRIVATE_KEY` (raw PEM) or `ASC_PRIVATE_KEY_PATH`.
@@ -61,7 +63,8 @@ struct AppStoreConnectMCP {
     }
 
     static let usage = """
-        app-store-connect-mcp — MCP server for the App Store Connect / Xcode Cloud read API.
+        app-store-connect-mcp — MCP server for the App Store Connect read API
+        (Xcode Cloud, App Store versions and builds, TestFlight, customer reviews).
 
         USAGE:
           app-store-connect-mcp        Start the MCP server on stdio (default).
@@ -73,7 +76,7 @@ struct AppStoreConnectMCP {
 
         The API key must be a Team key with Developer, App Manager, or Admin access
         — the Xcode Cloud (ci*) endpoints return 403 for finance/sales/support/
-        marketing-only keys. Signed tokens carry aud "appstoreconnect-v1" (handled
+        marketing-only keys, while the App Store metadata tools still work. Signed tokens carry aud "appstoreconnect-v1" (handled
         by AppStoreConnectKit); a missing/wrong aud is the usual cause of a 401.
         """
 }

@@ -16,6 +16,11 @@ public enum ASCError: Error, Sendable {
 
     /// A request could not be built or credentials were missing/invalid.
     case invalidConfiguration(reason: String)
+
+    /// A 2xx response body did not match the model this package expects. Carries the
+    /// request path and the target type so the mismatch is attributable — App Store
+    /// Connect adds and removes attributes without notice.
+    case decodingFailed(path: String, type: String, underlying: any Error)
 }
 
 extension ASCError: LocalizedError {
@@ -31,6 +36,8 @@ extension ASCError: LocalizedError {
             return "Upload failed for \(asset): \(reason)"
         case .invalidConfiguration(let reason):
             return "Invalid configuration: \(reason)"
+        case .decodingFailed(let path, let type, let underlying):
+            return "Could not decode \(type) from \(path): \(underlying)"
         }
     }
 }
