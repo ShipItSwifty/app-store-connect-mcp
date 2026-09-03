@@ -53,6 +53,7 @@ the REST plumbing. On top of the generic `get` / `post` / `patch` it offers:
 | **Customer reviews** | `customerReviews(appID:rating:territory:limit:)` |
 | **Review readiness** | `phasedRelease(versionID:)`, `appStoreReviewDetail(versionID:)`, `betaAppReviewDetail(appID:)`, `appInfos(appID:)` |
 | **Signing assets** | `certificates(limit:)`, `profiles(state:limit:)`, `signingAssets(withinDays:limit:)` |
+| **Reporting** | `analyticsReportRequests(appID:)`, `analyticsReports(requestID:…)`, `analyticsReportInstances(reportID:…)`, `analyticsReportSegments(instanceID:)`, `latestAnalyticsReport(appID:…)`, `salesReport(vendorNumber:reportDate:…)` |
 | **Production diagnostics** | `diagnosticSignatures(buildID:diagnosticType:limit:)`, `diagnosticLogs(signatureID:limit:)`, `diagnosticLogSummary(signatureID:…)`, `betaCrashLog(feedbackID:)`, `perfPowerMetrics(appID:…)`, `perfPowerMetricsSummary(appID:…)` |
 | **Xcode Cloud (read)** | `ciProducts`, `ciWorkflows`, `ciWorkflow(id:)`, `ciBuildRuns(workflowID:limit:failedOnly:)`, `ciBuildRun(id:)`, `ciBuildActions`, `ciIssues`, `ciTestResults`, `ciArtifacts`, `ciTestPlans(workflowID:)` |
 | **Aggregated diagnostics** | `ciFailureReport(buildRunID:workflowName:)`, `ciFailureReportWithLogs(…)`, `ciLatestFailureReport(workflowID:productID:appID:)` |
@@ -135,6 +136,7 @@ Set these environment variables (same names as `altool` / Fastlane):
 - `ASC_KEY_ID`
 - `ASC_ISSUER_ID`
 - `ASC_PRIVATE_KEY` (raw `.p8` PEM contents) **or** `ASC_PRIVATE_KEY_PATH` (path to the file)
+- `ASC_VENDOR_NUMBER` (optional) — default vendor number for `asc_sales_report`
 
 #### Key role and JWT audience
 
@@ -189,6 +191,9 @@ Set these environment variables (same names as `altool` / Fastlane):
 | `asc_review_details` | `app_id?` / `bundle_id?`, `version_id?` | what App Review and Beta App Review were told: contact, whether a demo account is required and its username, reviewer notes. Passwords are never returned |
 | `asc_list_app_infos` | `app_id?` / `bundle_id?`, `limit?` | the app-level listing records and their state — reviewed separately from a version, so an app can be `METADATA_REJECTED` while the version looks fine — plus computed age ratings |
 | `asc_signing_assets` | `within_days?`, `limit?` | certificates and profiles with expiry dates, flagging the expired, the soon-to-expire, and profiles Apple marked `INVALID`. The usual cause of "it signed last week and fails today" |
+| `asc_list_analytics_reports` | `app_id?` / `bundle_id?`, `category?`, `limit?` | the analytics report requests configured for an app and the reports under them. An empty list means nobody has created a request yet |
+| `asc_get_analytics_report` | `app_id?` / `bundle_id?`, `report_name?`, `category?`, `granularity?`, `processing_date?`, `max_rows?` | one report's data: walks request → report → newest instance → segment, inflates the gzipped CSV, and returns columns, capped rows, and the true row count |
+| `asc_sales_report` | `report_date`, `vendor_number?`, `frequency?`, `report_type?`, `report_sub_type?`, `version?`, `max_rows?` | a Sales and Trends report as a bounded table. Vendor number comes from the argument or `$ASC_VENDOR_NUMBER`. **Needs a Finance/Sales-role key**, not the Team key the `ci*` tools want |
 | `asc_rate_limit_status` | — | this key's hourly rate-limit position before you start a broad scan |
 | `asc_api_get` | `path`, `query?` | **escape hatch**: any authenticated `GET` against `/v1/…` or `/v2/…`, returned verbatim — appInfos, prices, in-app purchases, subscriptions, users, devices, certificates, and anything Apple ships next. Read-only by construction; a `links.next` URL can be pasted straight back as `path` |
 

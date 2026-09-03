@@ -45,7 +45,7 @@ struct ZipArchive: Sendable {
     }
 
     /// Caps to keep a pathological archive from exhausting memory.
-    private static let maxEntryBytes = 64 * 1024 * 1024
+    static let maxEntryBytes = 64 * 1024 * 1024
     private static let maxTotalBytes = 256 * 1024 * 1024
 
     private static let localHeaderSignature: UInt32 = 0x0403_4b50
@@ -236,7 +236,9 @@ struct ZipArchive: Sendable {
 
     // MARK: - DEFLATE
 
-    private static func inflate(_ input: [UInt8], hint: Int) -> Data? {
+    /// Raw-DEFLATE decode. Package-internal so `Gzip` can reuse it: a gzip member is a
+    /// raw DEFLATE stream between a header and an 8-byte trailer.
+    static func inflate(_ input: [UInt8], hint: Int) -> Data? {
         guard !input.isEmpty else { return Data() }
         // An empty file still has a (tiny) DEFLATE stream, which decodes to zero
         // bytes. Without this, every empty log inside a bundle was reported as a

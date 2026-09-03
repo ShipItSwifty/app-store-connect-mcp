@@ -79,6 +79,15 @@ the collection is exhausted or `limit` resources have been collected. A non-nil
 - ``PerfPowerMetricsResponse``
 - ``PerfPowerMetricsSummary``
 
+### Reporting
+
+- ``ASCAnalyticsReportRequest``
+- ``ASCAnalyticsReport``
+- ``ASCAnalyticsReportInstance``
+- ``ASCAnalyticsReportSegment``
+- ``AnalyticsReportResult``
+- ``ReportTable``
+
 ### App Store release and review
 
 - ``AppStoreReleaseService``
