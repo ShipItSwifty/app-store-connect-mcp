@@ -60,6 +60,12 @@ coverage climbs, don't lower it without a reason.
 - **Retries are on by default** (`TransientRetryPolicy`: 429 + 5xx, `Retry-After`
   honoured, `GET`-only for 5xx). Test helpers pass `.disabled` — a retry would eat the
   next queued mock response and add real backoff sleeps to the suite.
+- **`diagnosticSignatures/{id}/logs` and `perfPowerMetrics` are not JSON:API.** They
+  answer with `{"version":…,"productData":[…]}`, not `{"data":…}`, and both are far
+  too large to hand an agent verbatim — each has a normalized summary beside it.
+- **Gzip needs its trailer checked.** A corrupt member inflates to a *partial* buffer
+  rather than failing, so `Gzip` verifies CRC32 and length; without that a truncated
+  sales report would read as a short one.
 - **Apple `.p8` keys don't parse through swift-asn1 1.x.** `JWTGenerator` falls back
   to scanning the DER for the private scalar; don't "simplify" that away.
 
@@ -70,6 +76,12 @@ coverage climbs, don't lower it without a reason.
   service; per-service request bodies stay private to that file.
 - `Sources/AppStoreConnectMCPServer/Tools/` — `ToolSpec` (schema + handler in one
   value) and `CITools.specs`, the single list the server advertises and dispatches.
-  `CITools.specs` is `ciSpecs + AppStoreTools.specs`: the Xcode Cloud tools and the
-  App Store / TestFlight ones live in two files, but there is still one catalog and
-  no separate `switch` to update. Adding a tool means adding one spec.
+  `CITools.specs(writesEnabled:)` concatenates `ciSpecs`, `AppStoreTools`,
+  `DiagnosticsTools`, `ReviewTools`, `ReportingTools` and — only when
+  `ASC_ENABLE_WRITES` is set — `WriteTools`. Several files, still one catalog and no
+  separate `switch` to update. Adding a tool means adding one spec.
+- **Writes are opt-in and must stay that way.** A default deployment advertises a
+  catalog whose every tool is `readOnlyHint: true`, which is what lets a host
+  auto-approve a whole investigation. Anything that mutates belongs in `WriteTools`
+  with `isReadOnly: false`; dispatch answers a disabled write tool by naming the
+  environment variable rather than "unknown tool".

@@ -74,6 +74,11 @@ struct AppStoreConnectMCP {
         Credentials are read from the environment: ASC_KEY_ID, ASC_ISSUER_ID, and
         either ASC_PRIVATE_KEY (raw PEM) or ASC_PRIVATE_KEY_PATH.
 
+        Optional: ASC_VENDOR_NUMBER (default vendor number for sales reports), and
+        ASC_ENABLE_WRITES=1 to advertise the write tools (start/re-run an Xcode Cloud
+        build, update release notes, submit for review, create an analytics report
+        request). Unset, every advertised tool is read-only.
+
         The API key must be a Team key with Developer, App Manager, or Admin access
         — the Xcode Cloud (ci*) endpoints return 403 for finance/sales/support/
         marketing-only keys, while the App Store metadata tools still work. Signed tokens carry aud "appstoreconnect-v1" (handled

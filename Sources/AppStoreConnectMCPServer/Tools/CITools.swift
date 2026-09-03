@@ -17,7 +17,18 @@ enum CITools {
 
     // MARK: - Tool catalog
 
-    static let specs: [ToolSpec] = ciSpecs + AppStoreTools.specs + DiagnosticsTools.specs + ReviewTools.specs + ReportingTools.specs
+    static let specs: [ToolSpec] = specs(writesEnabled: WriteTools.isEnabled())
+
+    /// The catalog for a given write setting.
+    ///
+    /// Writes are opt-in (`ASC_ENABLE_WRITES`), so a default deployment advertises a
+    /// catalog whose every tool is `readOnlyHint: true` and can be auto-approved
+    /// wholesale. Taking the flag as a parameter keeps that decision testable.
+    static func specs(writesEnabled: Bool) -> [ToolSpec] {
+        let readOnly =
+            ciSpecs + AppStoreTools.specs + DiagnosticsTools.specs + ReviewTools.specs + ReportingTools.specs
+        return writesEnabled ? readOnly + WriteTools.specs : readOnly
+    }
 
     /// The Xcode Cloud half of the catalog. ``specs`` is this plus
     /// ``AppStoreTools/specs`` — one list, split across two files only for size.
@@ -285,6 +296,11 @@ enum CITools {
         makeClient: ClientProvider
     ) async throws -> CallTool.Result {
         guard let spec = specsByName[name] else {
+            // A write tool that exists but is switched off should say so; only a name
+            // this server has never heard of is "unknown".
+            if let disabled = WriteTools.specsByName[name] {
+                return .init(content: [.plainText(WriteTools.disabledMessage(for: disabled.name))], isError: true)
+            }
             return .init(content: [.plainText("Unknown tool: \(name)")], isError: true)
         }
         return try await spec.handler(ToolArguments(arguments), makeClient)

@@ -28,6 +28,7 @@ final class MCPMockURLProtocol: URLProtocol {
         lock.lock()
         defer { lock.unlock() }
         queue = responses
+        lastBody = nil
     }
 
     private static func next(for url: URL?) -> Canned {
@@ -47,11 +48,29 @@ final class MCPMockURLProtocol: URLProtocol {
         return Canned(statusCode: 500, body: Data("no mock".utf8))
     }
 
+    nonisolated(unsafe) private static var lastBody: Data?
+
+    /// The JSON body of the most recent request, for the write tests — the write tools'
+    /// whole job is the body they put on the wire.
+    static func lastRequestBody() -> [String: Any]? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let data = lastBody else { return nil }
+        return try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    }
+
+    private static func record(body: Data?) {
+        lock.lock()
+        defer { lock.unlock() }
+        lastBody = body
+    }
+
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func stopLoading() {}
 
     override func startLoading() {
+        Self.record(body: request.bodyData)
         let canned = Self.next(for: request.url)
         let response = HTTPURLResponse(
             url: request.url!,
@@ -93,4 +112,24 @@ func jsonCanned(
         pathContains: pathContains,
         headers: headers
     )
+}
+
+extension URLRequest {
+    /// The request body, read from `httpBodyStream` when `URLSession` has already
+    /// turned `httpBody` into a stream (which it does before a `URLProtocol` sees it).
+    var bodyData: Data? {
+        if let httpBody { return httpBody }
+        guard let stream = httpBodyStream else { return nil }
+        stream.open()
+        defer { stream.close() }
+
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 4096)
+        while stream.hasBytesAvailable {
+            let read = stream.read(&buffer, maxLength: buffer.count)
+            guard read > 0 else { break }
+            data.append(buffer, count: read)
+        }
+        return data.isEmpty ? nil : data
+    }
 }

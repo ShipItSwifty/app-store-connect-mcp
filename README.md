@@ -60,6 +60,7 @@ the REST plumbing. On top of the generic `get` / `post` / `patch` it offers:
 | **Artifacts & logs** | `downloadArtifact(from:)`, `analyzeArtifactLog(from:parser:)`, `CILogParser` |
 | **Release management** | `AppStoreReleaseService` — see below |
 | **Review diagnostics** | `AppStoreSubmissionService.status(bundleID:)` |
+| **Xcode Cloud (write)** | `startCIBuildRun(workflowID:gitReferenceID:clean:)`, `rerunCIBuildRun(buildRunID:clean:)` |
 | **IPA upload** (macOS) | `IPAUploadService.uploadIPA(at:bundleID:credentials:shell:)` |
 | **Anything else** | `getRaw(_:query:)` — Apple's JSON verbatim, for resources with no typed model |
 
@@ -137,6 +138,7 @@ Set these environment variables (same names as `altool` / Fastlane):
 - `ASC_ISSUER_ID`
 - `ASC_PRIVATE_KEY` (raw `.p8` PEM contents) **or** `ASC_PRIVATE_KEY_PATH` (path to the file)
 - `ASC_VENDOR_NUMBER` (optional) — default vendor number for `asc_sales_report`
+- `ASC_ENABLE_WRITES` (optional) — set to `1` to advertise the [write tools](#writes-opt-in); unset, the server is read-only
 
 #### Key role and JWT audience
 
@@ -198,9 +200,25 @@ Set these environment variables (same names as `altool` / Fastlane):
 | `asc_api_get` | `path`, `query?` | **escape hatch**: any authenticated `GET` against `/v1/…` or `/v2/…`, returned verbatim — appInfos, prices, in-app purchases, subscriptions, users, devices, certificates, and anything Apple ships next. Read-only by construction; a `links.next` URL can be pasted straight back as `path` |
 
 Every app-scoped tool accepts **either** `app_id` **or** `bundle_id` (the bundle id
-costs one extra lookup). All tools are advertised with MCP's `readOnlyHint`, so a
-host can auto-approve them instead of prompting once per lookup during an
+costs one extra lookup). Every tool above is advertised with MCP's `readOnlyHint`, so
+a host can auto-approve them instead of prompting once per lookup during an
 investigation.
+
+**Writes (opt-in)**
+
+The tools above only read. The ones below change something in App Store Connect and
+are advertised **only** when `ASC_ENABLE_WRITES=1` is set in the server's environment
+— so a default deployment keeps a catalog that is read-only end to end, and an
+operator opts in deliberately. Calling one while it is disabled returns a message
+naming the variable rather than "unknown tool".
+
+| Tool | Arguments | Does |
+|---|---|---|
+| `asc_ci_start_build` | `workflow_id`, `git_reference_id?`, `clean?` | starts a real Xcode Cloud build (consumes compute minutes) |
+| `asc_ci_rerun_build` | `build_run_id`, `clean?` | re-runs a build run, reusing its workflow **and git reference**, so the retry builds the same commit |
+| `asc_update_whats_new` | `bundle_id`, `locale`, `text` | sets the release notes for one locale on the latest version; fails once that version is in review |
+| `asc_submit_for_review` | `bundle_id`, `version_string?`, `automatic_release?`, `phased_release?` | **submits the app to App Review** — irreversible and public |
+| `asc_create_analytics_report_request` | `app_id?` / `bundle_id?`, `access_type?` | creates the analytics report request that makes `asc_get_analytics_report` return anything |
 
 The server does no analysis of its own beyond normalization (`CIFailureReport`, `CILatestFailure`, `CILogParser`, `AppStoreSubmissionService`) — the calling agent reasons over the data. When a response leaves the App Store Connect hourly rate limit within 10 points of its throttle threshold, an extra text block is appended warning that further calls may stall.
 

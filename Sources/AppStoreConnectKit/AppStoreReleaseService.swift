@@ -229,6 +229,44 @@ public struct AppStoreReleaseService: Sendable {
         return ReviewSubmissionResult(appStoreVersionID: appStoreVersion.id, reviewSubmissionID: submission.data.id)
     }
 
+    /// Updates one locale's "What's New" text on the app's latest App Store version.
+    ///
+    /// ``pushMetadata(bundleID:directory:resolveVersionString:)`` syncs every field of
+    /// every locale from a directory of files, which is the wrong shape for changing a
+    /// single string — an agent asked to fix a typo in the release notes has no
+    /// directory to sync from.
+    ///
+    /// - Parameters:
+    ///   - bundleID: The app's bundle identifier.
+    ///   - locale: The locale to update, e.g. `en-US`.
+    ///   - whatsNew: The release-notes text.
+    /// - Returns: The App Store version that was updated.
+    /// - Throws: ``ASCError/apiError(statusCode:body:)`` when the app has no editable
+    ///   version — a version already in review cannot be edited.
+    @discardableResult
+    public func updateWhatsNew(bundleID: String, locale: String, whatsNew: String) async throws -> String {
+        let app = try await client.app(bundleID: bundleID)
+        guard let version = try await resolveLatestAppStoreVersion(appID: app.id) else {
+            throw ASCError.apiError(
+                statusCode: 404,
+                body: "App '\(bundleID)' has no App Store version to update."
+            )
+        }
+        try await upsertAppStoreVersionLocalization(
+            appStoreVersionID: version.id,
+            metadata: LocalizedMetadata(
+                locale: locale,
+                name: nil,
+                subtitle: nil,
+                description: nil,
+                keywords: nil,
+                whatsNew: whatsNew
+            )
+        )
+        logger.info("Updated what's new for '\(locale)' on version '\(version.id)'")
+        return version.id
+    }
+
     private func resolveLatestAppStoreVersion(appID: String) async throws -> AppStoreVersionResource? {
         let response: ASCListResponse<AppStoreVersionResource> = try await client.get(
             "/v1/apps/\(appID)/appStoreVersions",
