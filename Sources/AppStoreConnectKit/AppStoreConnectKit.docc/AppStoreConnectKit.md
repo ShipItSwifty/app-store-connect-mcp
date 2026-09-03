@@ -99,6 +99,12 @@ the collection is exhausted or `limit` resources have been collected. A non-nil
 - ``ASCBetaTester``
 - ``ASCBetaFeedback``
 - ``ASCCustomerReview``
+- ``ASCPhasedRelease``
+- ``ASCReviewDetail``
+- ``ASCAppInfo``
+- ``ASCCertificate``
+- ``ASCProfile``
+- ``SigningAssetsReport``
 - ``CIProduct``
 - ``CIWorkflow``
 - ``CIBuildRun``

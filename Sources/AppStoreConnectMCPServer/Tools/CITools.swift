@@ -17,7 +17,7 @@ enum CITools {
 
     // MARK: - Tool catalog
 
-    static let specs: [ToolSpec] = ciSpecs + AppStoreTools.specs + DiagnosticsTools.specs
+    static let specs: [ToolSpec] = ciSpecs + AppStoreTools.specs + DiagnosticsTools.specs + ReviewTools.specs
 
     /// The Xcode Cloud half of the catalog. ``specs`` is this plus
     /// ``AppStoreTools/specs`` — one list, split across two files only for size.

@@ -193,6 +193,33 @@ func makeClientRecording(
     )
 }
 
+/// Builds a client whose responses are matched by URL substring rather than by
+/// arrival order.
+///
+/// Helpers that issue requests concurrently (`async let`) have no defined order, so a
+/// FIFO queue hands them each other's responses. Routing by path pins each response to
+/// the endpoint it belongs to.
+func makeClientRouting(
+    _ routes: [(pathContains: String, response: MockHTTPResponse)],
+    retryPolicy: TransientRetryPolicy = .disabled
+) -> AppStoreConnectClient {
+    let session = makeMockSession { request in
+        let url = request.url?.absoluteString ?? ""
+        guard let route = routes.first(where: { url.contains($0.pathContains) }) else {
+            return .error(statusCode: 500, body: "No mock route matches \(url)")
+        }
+        return route.response
+    }
+    return AppStoreConnectClient(
+        keyID: "KEY",
+        issuerID: "ISSUER",
+        privateKeyData: Data("placeholder".utf8),
+        session: session,
+        tokenProvider: { "test-token" },
+        retryPolicy: retryPolicy
+    )
+}
+
 func makeMockSession(handler: @escaping @Sendable (URLRequest) -> MockHTTPResponse) -> URLSession {
     let sessionID = UUID().uuidString
     MockURLProtocol.registerHandler(handler, for: sessionID)

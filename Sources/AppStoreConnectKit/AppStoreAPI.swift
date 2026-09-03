@@ -161,6 +161,111 @@ extension AppStoreConnectClient {
         return try await getAll("/v1/apps/\(appID)/\(kind.path)", query: query, limit: limit)
     }
 
+    // MARK: - Review readiness
+
+    /// Reads a version's staged-rollout state, or `nil` when the version has no phased
+    /// release (the default for a manual or immediate release).
+    public func phasedRelease(versionID: String) async throws -> ASCPhasedRelease? {
+        try await optionalResource("/v1/appStoreVersions/\(versionID)/appStoreVersionPhasedRelease")
+    }
+
+    /// Reads the contact and demo-account details App Review sees for a version.
+    public func appStoreReviewDetail(versionID: String) async throws -> ASCReviewDetail? {
+        try await optionalResource("/v1/appStoreVersions/\(versionID)/appStoreReviewDetail")
+    }
+
+    /// Reads the contact and demo-account details Beta App Review sees for an app.
+    public func betaAppReviewDetail(appID: String) async throws -> ASCReviewDetail? {
+        try await optionalResource("/v1/apps/\(appID)/betaAppReviewDetail")
+    }
+
+    /// Lists an app's `appInfos` — the app-level listing records, whose state is
+    /// reviewed separately from any one version.
+    public func appInfos(appID: String, limit: Int = 10) async throws -> ASCListResponse<ASCAppInfo> {
+        try await getAll("/v1/apps/\(appID)/appInfos", limit: limit)
+    }
+
+    // MARK: - Signing assets
+
+    /// Lists the team's signing certificates, soonest expiry first.
+    public func certificates(limit: Int = 200) async throws -> ASCListResponse<ASCCertificate> {
+        try await getAll("/v1/certificates", query: ["sort": "expirationDate"], limit: limit)
+    }
+
+    /// Lists the team's provisioning profiles.
+    ///
+    /// - Parameter state: Optional `filter[profileState]` — `ACTIVE` or `INVALID`.
+    public func profiles(state: String? = nil, limit: Int = 200) async throws -> ASCListResponse<ASCProfile> {
+        var query: [String: String] = [:]
+        if let state { query["filter[profileState]"] = state }
+        return try await getAll("/v1/profiles", query: query, limit: limit)
+    }
+
+    /// Lists certificates and profiles together, flagging the ones that will break
+    /// signing — already expired, expiring within `withinDays`, or marked `INVALID`.
+    ///
+    /// "It built last week and fails today" is nearly always one of those three, and
+    /// checking each collection by hand is three calls and a date comparison.
+    public func signingAssets(withinDays: Int = 30, limit: Int = 200) async throws -> SigningAssetsReport {
+        async let certificatesTask = certificates(limit: limit)
+        async let profilesTask = profiles(limit: limit)
+        let certificates = try await certificatesTask.data
+        let profiles = try await profilesTask.data
+
+        let now = Date()
+        func daysRemaining(_ date: String?) -> Int? {
+            guard let expiry = CIDate.parse(date) else { return nil }
+            return Int((expiry.timeIntervalSince(now) / 86400).rounded(.down))
+        }
+
+        var expiring: [SigningAssetsReport.Expiring] = []
+        for certificate in certificates {
+            guard let days = daysRemaining(certificate.attributes?.expirationDate), days <= withinDays else { continue }
+            expiring.append(
+                .init(
+                    kind: "certificate",
+                    id: certificate.id,
+                    name: certificate.attributes?.displayName ?? certificate.attributes?.name,
+                    expirationDate: certificate.attributes?.expirationDate,
+                    daysRemaining: days
+                ))
+        }
+        for profile in profiles {
+            guard let days = daysRemaining(profile.attributes?.expirationDate), days <= withinDays else { continue }
+            expiring.append(
+                .init(
+                    kind: "profile",
+                    id: profile.id,
+                    name: profile.attributes?.name,
+                    expirationDate: profile.attributes?.expirationDate,
+                    daysRemaining: days
+                ))
+        }
+
+        return SigningAssetsReport(
+            certificates: certificates,
+            profiles: profiles,
+            expiringSoon: expiring.sorted { ($0.daysRemaining ?? 0) < ($1.daysRemaining ?? 0) },
+            invalidProfiles:
+                profiles
+                .filter { ($0.attributes?.profileState ?? "").uppercased() == "INVALID" }
+                .map { $0.attributes?.name ?? $0.id }
+        )
+    }
+
+    /// Reads a to-one relationship that App Store Connect answers with a 404 when it
+    /// is not set — "no phased release configured", "no review detail filled in" — which
+    /// is an answer rather than a failure.
+    private func optionalResource<T: Codable & Sendable>(_ path: String) async throws -> T? {
+        do {
+            let response: ASCResponse<T> = try await get(path)
+            return response.data
+        } catch let error as ASCError {
+            if case .apiError(let statusCode, _) = error, statusCode == 404 { return nil }
+            throw error
+        }
+    }
+
     // MARK: - Customer reviews
 
     /// Lists an app's App Store customer reviews, newest first.

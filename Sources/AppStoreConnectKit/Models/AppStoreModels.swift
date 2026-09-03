@@ -323,3 +323,290 @@ public struct ASCBetaFeedback: Codable, Sendable {
         }
     }
 }
+
+/// An `appStoreVersionPhasedReleases` resource — the staged rollout of a version.
+public struct ASCPhasedRelease: Codable, Sendable {
+    /// Unique identifier for this phased release.
+    public let id: String
+    /// Phased-release attributes.
+    public let attributes: Attributes?
+
+    /// Creates an `ASCPhasedRelease`.
+    public init(id: String, attributes: Attributes? = nil) {
+        self.id = id
+        self.attributes = attributes
+    }
+
+    /// Attributes of a phased release.
+    public struct Attributes: Codable, Sendable {
+        /// `INACTIVE`, `ACTIVE`, `PAUSED`, or `COMPLETE`.
+        public let phasedReleaseState: String?
+        /// Day 1–7 of Apple's fixed 1/2/5/10/20/50/100% schedule.
+        public let currentDayNumber: Int?
+        public let startDate: String?
+        /// Seconds the rollout has spent paused.
+        public let totalPauseDuration: Int?
+
+        /// Creates `ASCPhasedRelease.Attributes`.
+        public init(
+            phasedReleaseState: String? = nil,
+            currentDayNumber: Int? = nil,
+            startDate: String? = nil,
+            totalPauseDuration: Int? = nil
+        ) {
+            self.phasedReleaseState = phasedReleaseState
+            self.currentDayNumber = currentDayNumber
+            self.startDate = startDate
+            self.totalPauseDuration = totalPauseDuration
+        }
+    }
+
+    /// The share of users Apple has released to on ``Attributes/currentDayNumber``.
+    ///
+    /// The schedule is fixed and not returned by the API, so it is applied here rather
+    /// than left for every caller to remember.
+    public var percentageOfUsers: Int? {
+        guard let day = attributes?.currentDayNumber, day >= 1 else { return nil }
+        let schedule = [1, 2, 5, 10, 20, 50, 100]
+        return day <= schedule.count ? schedule[day - 1] : 100
+    }
+}
+
+/// An `appStoreReviewDetails` or `betaAppReviewDetails` resource — the contact and
+/// demo-account information App Review is given.
+///
+/// Both resources carry identical attributes, so one shape decodes either. A missing
+/// demo account on an app that needs a login is a routine rejection cause.
+public struct ASCReviewDetail: Codable, Sendable {
+    /// Unique identifier for this resource.
+    public let id: String
+    /// Review-detail attributes.
+    public let attributes: Attributes?
+
+    /// Creates an `ASCReviewDetail`.
+    public init(id: String, attributes: Attributes? = nil) {
+        self.id = id
+        self.attributes = attributes
+    }
+
+    /// Attributes of a review detail.
+    ///
+    /// The demo account *password* is deliberately not modelled: it is a credential,
+    /// and nothing this package does needs to read one back.
+    public struct Attributes: Codable, Sendable {
+        public let contactFirstName: String?
+        public let contactLastName: String?
+        public let contactEmail: String?
+        public let contactPhone: String?
+        public let demoAccountName: String?
+        /// Whether the app requires a demo account for review.
+        public let demoAccountRequired: Bool?
+        /// Free-text notes shown to the reviewer.
+        public let notes: String?
+
+        /// Creates `ASCReviewDetail.Attributes`.
+        public init(
+            contactFirstName: String? = nil,
+            contactLastName: String? = nil,
+            contactEmail: String? = nil,
+            contactPhone: String? = nil,
+            demoAccountName: String? = nil,
+            demoAccountRequired: Bool? = nil,
+            notes: String? = nil
+        ) {
+            self.contactFirstName = contactFirstName
+            self.contactLastName = contactLastName
+            self.contactEmail = contactEmail
+            self.contactPhone = contactPhone
+            self.demoAccountName = demoAccountName
+            self.demoAccountRequired = demoAccountRequired
+            self.notes = notes
+        }
+    }
+}
+
+/// An `appInfos` resource — the app-level (not version-level) listing state:
+/// categories, content rights, and age rating.
+public struct ASCAppInfo: Codable, Sendable {
+    /// Unique identifier for this app info.
+    public let id: String
+    /// App-info attributes.
+    public let attributes: Attributes?
+
+    /// Creates an `ASCAppInfo`.
+    public init(id: String, attributes: Attributes? = nil) {
+        self.id = id
+        self.attributes = attributes
+    }
+
+    /// Attributes of an app info.
+    public struct Attributes: Codable, Sendable {
+        /// The state of this app-info record (`PREPARE_FOR_SUBMISSION`, `REJECTED`, …).
+        /// App-level metadata is reviewed separately from a version, which is why an
+        /// app can be `METADATA_REJECTED` while the version itself looks fine.
+        public let state: String?
+        public let appStoreState: String?
+        /// The computed rating (`FOUR_PLUS`, `SEVENTEEN_PLUS`, …).
+        public let appStoreAgeRating: String?
+        public let kidsAgeBand: String?
+        public let brazilAgeRatingV2: String?
+        public let koreaAgeRating: String?
+        public let australiaAgeRating: String?
+        public let franceAgeRating: String?
+
+        /// Creates `ASCAppInfo.Attributes`.
+        public init(
+            state: String? = nil,
+            appStoreState: String? = nil,
+            appStoreAgeRating: String? = nil,
+            kidsAgeBand: String? = nil,
+            brazilAgeRatingV2: String? = nil,
+            koreaAgeRating: String? = nil,
+            australiaAgeRating: String? = nil,
+            franceAgeRating: String? = nil
+        ) {
+            self.state = state
+            self.appStoreState = appStoreState
+            self.appStoreAgeRating = appStoreAgeRating
+            self.kidsAgeBand = kidsAgeBand
+            self.brazilAgeRatingV2 = brazilAgeRatingV2
+            self.koreaAgeRating = koreaAgeRating
+            self.australiaAgeRating = australiaAgeRating
+            self.franceAgeRating = franceAgeRating
+        }
+    }
+}
+
+/// A `certificates` resource — a signing certificate and, importantly, its expiry.
+public struct ASCCertificate: Codable, Sendable {
+    /// Unique identifier for this certificate.
+    public let id: String
+    /// Certificate attributes.
+    public let attributes: Attributes?
+
+    /// Creates an `ASCCertificate`.
+    public init(id: String, attributes: Attributes? = nil) {
+        self.id = id
+        self.attributes = attributes
+    }
+
+    /// Attributes of a certificate. `certificateContent` (the DER payload) is omitted:
+    /// nothing here installs certificates, and it would dwarf the fields that matter.
+    public struct Attributes: Codable, Sendable {
+        public let name: String?
+        public let displayName: String?
+        /// `DEVELOPMENT`, `DISTRIBUTION`, `IOS_DISTRIBUTION`, …
+        public let certificateType: String?
+        public let platform: String?
+        public let serialNumber: String?
+        public let expirationDate: String?
+
+        /// Creates `ASCCertificate.Attributes`.
+        public init(
+            name: String? = nil,
+            displayName: String? = nil,
+            certificateType: String? = nil,
+            platform: String? = nil,
+            serialNumber: String? = nil,
+            expirationDate: String? = nil
+        ) {
+            self.name = name
+            self.displayName = displayName
+            self.certificateType = certificateType
+            self.platform = platform
+            self.serialNumber = serialNumber
+            self.expirationDate = expirationDate
+        }
+    }
+}
+
+/// A `profiles` resource — a provisioning profile, its state, and its expiry.
+public struct ASCProfile: Codable, Sendable {
+    /// Unique identifier for this profile.
+    public let id: String
+    /// Profile attributes.
+    public let attributes: Attributes?
+
+    /// Creates an `ASCProfile`.
+    public init(id: String, attributes: Attributes? = nil) {
+        self.id = id
+        self.attributes = attributes
+    }
+
+    /// Attributes of a provisioning profile. `profileContent` (the encoded profile) is
+    /// omitted for the same reason as `certificateContent`.
+    public struct Attributes: Codable, Sendable {
+        public let name: String?
+        /// `ACTIVE` or `INVALID`. A profile goes `INVALID` when a certificate or device
+        /// it references is revoked — the usual cause of a sudden code-signing failure.
+        public let profileState: String?
+        /// `IOS_APP_STORE`, `IOS_APP_DEVELOPMENT`, `MAC_APP_STORE`, …
+        public let profileType: String?
+        public let platform: String?
+        public let uuid: String?
+        public let createdDate: String?
+        public let expirationDate: String?
+
+        /// Creates `ASCProfile.Attributes`.
+        public init(
+            name: String? = nil,
+            profileState: String? = nil,
+            profileType: String? = nil,
+            platform: String? = nil,
+            uuid: String? = nil,
+            createdDate: String? = nil,
+            expirationDate: String? = nil
+        ) {
+            self.name = name
+            self.profileState = profileState
+            self.profileType = profileType
+            self.platform = platform
+            self.uuid = uuid
+            self.createdDate = createdDate
+            self.expirationDate = expirationDate
+        }
+    }
+}
+
+/// The signing assets a team has, with the ones that will stop a build called out.
+public struct SigningAssetsReport: Codable, Sendable {
+    public let certificates: [ASCCertificate]
+    public let profiles: [ASCProfile]
+    /// Certificates and profiles already expired, or expiring within the warning window.
+    public let expiringSoon: [Expiring]
+    /// Profiles Apple has marked `INVALID`, which fail signing immediately.
+    public let invalidProfiles: [String]
+
+    /// Creates a `SigningAssetsReport`.
+    public init(
+        certificates: [ASCCertificate],
+        profiles: [ASCProfile],
+        expiringSoon: [Expiring],
+        invalidProfiles: [String]
+    ) {
+        self.certificates = certificates
+        self.profiles = profiles
+        self.expiringSoon = expiringSoon
+        self.invalidProfiles = invalidProfiles
+    }
+
+    /// One asset that has expired or is about to.
+    public struct Expiring: Codable, Sendable {
+        /// `certificate` or `profile`.
+        public let kind: String
+        public let id: String
+        public let name: String?
+        public let expirationDate: String?
+        /// Negative once the asset has already expired.
+        public let daysRemaining: Int?
+
+        /// Creates an `Expiring`.
+        public init(kind: String, id: String, name: String?, expirationDate: String?, daysRemaining: Int?) {
+            self.kind = kind
+            self.id = id
+            self.name = name
+            self.expirationDate = expirationDate
+            self.daysRemaining = daysRemaining
+        }
+    }
+}
