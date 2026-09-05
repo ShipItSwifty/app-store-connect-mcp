@@ -242,13 +242,32 @@ export ASC_KEY_ID=… ASC_ISSUER_ID=… ASC_PRIVATE_KEY_PATH=/path/AuthKey_XXXX.
 
 ### Register with a client
 
-`.mcp.json` / `claude_desktop_config.json`:
+All four clients below point `command` at the binary Homebrew already put on your
+`PATH` — run `which app-store-connect-mcp` first and use that absolute path if a
+client doesn't inherit your shell's `PATH` (GUI apps often don't).
+
+#### Claude Code
+
+```bash
+claude mcp add app-store-connect \
+  --env ASC_KEY_ID=… \
+  --env ASC_ISSUER_ID=… \
+  --env ASC_PRIVATE_KEY_PATH=/absolute/path/AuthKey_XXXX.p8 \
+  -- $(which app-store-connect-mcp)
+```
+
+This writes to `~/.claude.json` (use `--scope project` to write `.mcp.json` in the
+repo instead, or `--scope local` for a project-local entry only you see).
+
+#### Claude Desktop
+
+Add to `claude_desktop_config.json` (Settings → Developer → Edit Config):
 
 ```json
 {
   "mcpServers": {
     "app-store-connect": {
-      "command": "/absolute/path/to/app-store-connect-mcp",
+      "command": "/opt/homebrew/bin/app-store-connect-mcp",
       "env": {
         "ASC_KEY_ID": "…",
         "ASC_ISSUER_ID": "…",
@@ -258,6 +277,65 @@ export ASC_KEY_ID=… ASC_ISSUER_ID=… ASC_PRIVATE_KEY_PATH=/path/AuthKey_XXXX.
   }
 }
 ```
+
+#### Codex CLI
+
+Add to `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.app-store-connect]
+command = "/opt/homebrew/bin/app-store-connect-mcp"
+
+[mcp_servers.app-store-connect.env]
+ASC_KEY_ID = "…"
+ASC_ISSUER_ID = "…"
+ASC_PRIVATE_KEY_PATH = "/absolute/path/AuthKey_XXXX.p8"
+```
+
+Or via the CLI: `codex mcp add app-store-connect -- /opt/homebrew/bin/app-store-connect-mcp`.
+
+#### Cursor
+
+Add to `.cursor/mcp.json` (project) or `~/.cursor/mcp.json` (global):
+
+```json
+{
+  "mcpServers": {
+    "app-store-connect": {
+      "command": "/opt/homebrew/bin/app-store-connect-mcp",
+      "env": {
+        "ASC_KEY_ID": "…",
+        "ASC_ISSUER_ID": "…",
+        "ASC_PRIVATE_KEY_PATH": "/absolute/path/AuthKey_XXXX.p8"
+      }
+    }
+  }
+}
+```
+
+#### Windsurf
+
+Add to `~/.codeium/windsurf/mcp_config.json` (Windsurf Settings → MCP Servers → View
+raw config):
+
+```json
+{
+  "mcpServers": {
+    "app-store-connect": {
+      "command": "/opt/homebrew/bin/app-store-connect-mcp",
+      "env": {
+        "ASC_KEY_ID": "…",
+        "ASC_ISSUER_ID": "…",
+        "ASC_PRIVATE_KEY_PATH": "/absolute/path/AuthKey_XXXX.p8"
+      }
+    }
+  }
+}
+```
+
+> `/opt/homebrew/bin` is the default Homebrew prefix on Apple Silicon; Intel Macs and
+> Linuxbrew use `/usr/local/bin` and `/home/linuxbrew/.linuxbrew/bin` respectively —
+> confirm with `which app-store-connect-mcp`.
 
 ## Development
 
