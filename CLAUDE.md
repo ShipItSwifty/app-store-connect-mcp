@@ -48,8 +48,10 @@ coverage climbs, don't lower it without a reason.
   that returns a collection, or you silently truncate at one page.
 - **The `ci*` endpoints need a Team key** with Developer / App Manager / Admin access;
   finance/sales-only keys get 403 on them while metadata calls still succeed.
-- **jwt-kit is pinned to 5.4.x on purpose.** 5.5+ pulls in ML-DSA code that needs a
-  newer swift-crypto than the stable CI images carry.
+- **jwt-kit tracks 5.6.x (`.upToNextMinor`).** It resolves swift-crypto `>= 4.1.0`;
+  the manifest holds swift-crypto on `4.5.2 ..< 5.0.0` because swift-crypto 5.x is
+  still pre-release. The old "5.5+ needs ML-DSA / a newer swift-crypto" pin no
+  longer applies — 5.6.0 builds on the 4.x crypto line the stable CI images carry.
 - **`betaGroups.publicLink` is a URL string, not a Bool.** It was modelled as `Bool`
   and threw `typeMismatch` for every group with a public link enabled. Apple's
   attribute types are worth checking against the docs JSON

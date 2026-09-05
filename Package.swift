@@ -15,9 +15,9 @@ let package = Package(
         .executable(name: "app-store-connect-mcp", targets: ["AppStoreConnectMCPServer"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/apple/swift-crypto", from: "4.4.0"),
-        // Pin to 5.4.x: jwt-kit >= 5.5 pulls in ML-DSA (post-quantum) code that
-        // needs a swift-crypto / toolchain newer than the stable CI images.
+        // jwt-kit 5.6.0 needs swift-crypto >= 4.1.0; stay on the 4.x line
+        // (5.x is still pre-release) and track its latest stable.
+        .package(url: "https://github.com/apple/swift-crypto", "4.5.2"..<"5.0.0"),
         .package(url: "https://github.com/vapor/jwt-kit", .upToNextMinor(from: "5.6.0")),
         .package(url: "https://github.com/apple/swift-log", from: "1.12.0"),
         .package(url: "https://github.com/maniramezan/SwiftyShell.git", from: "0.5.0"),
