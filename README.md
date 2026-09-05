@@ -242,9 +242,20 @@ export ASC_KEY_ID=… ASC_ISSUER_ID=… ASC_PRIVATE_KEY_PATH=/path/AuthKey_XXXX.
 
 ### Register with a client
 
-All four clients below point `command` at the binary Homebrew already put on your
-`PATH` — run `which app-store-connect-mcp` first and use that absolute path if a
-client doesn't inherit your shell's `PATH` (GUI apps often don't).
+Run `scripts/install-mcp.sh` to detect whichever of Claude Code, Claude Desktop,
+Codex CLI, Cursor, and Windsurf you have installed and register the server with
+each, one confirmation prompt per client. It merges into each client's existing
+config (other servers are untouched) and never runs on its own — not from
+`brew install`, not from `swift build`, only when you invoke it:
+
+```bash
+scripts/install-mcp.sh
+```
+
+Or register by hand — all four clients below point `command` at the binary
+Homebrew already put on your `PATH`; run `which app-store-connect-mcp` first and
+use that absolute path if a client doesn't inherit your shell's `PATH` (GUI apps
+often don't).
 
 #### Claude Code
 
