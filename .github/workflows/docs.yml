@@ -20,7 +20,7 @@ jobs:
     name: Build DocC
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
