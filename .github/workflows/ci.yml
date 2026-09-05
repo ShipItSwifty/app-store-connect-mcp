@@ -43,6 +43,20 @@ jobs:
       - name: Swift version
         run: swift --version
 
+      # Caches the resolved dependency checkout and the compiled build products
+      # across runs. Keyed on the pin files so a dependency bump busts the cache;
+      # restore-keys lets an unrelated change still warm-start from the last run.
+      - name: Cache SwiftPM
+        uses: actions/cache@v4
+        with:
+          path: |
+            .build
+            ~/Library/Caches/org.swift.swiftpm
+            ~/.swiftpm
+          key: ${{ runner.os }}-spm-ci-${{ hashFiles('Package.resolved', 'Package.swift') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-ci-
+
       - name: Resolve dependencies
         run: swift package resolve
 
@@ -87,6 +101,17 @@ jobs:
 
       - name: Swift version
         run: swift --version
+
+      - name: Cache SwiftPM
+        uses: actions/cache@v4
+        with:
+          path: |
+            .build
+            /root/.cache/org.swift.swiftpm
+            /root/.swiftpm
+          key: ${{ runner.os }}-spm-ci-linux-${{ hashFiles('Package.resolved', 'Package.swift') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-ci-linux-
 
       - name: Resolve dependencies
         run: swift package resolve
