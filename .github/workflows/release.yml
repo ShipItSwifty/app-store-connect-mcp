@@ -173,7 +173,7 @@ jobs:
             > "app-store-connect-mcp-${RELEASE_VERSION}-checksums.txt"
 
       - name: Attest release archives
-        uses: actions/attest-build-provenance@v1
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: 'app-store-connect-mcp-*.tar.gz'
 
