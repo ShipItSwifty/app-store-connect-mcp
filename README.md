@@ -252,6 +252,9 @@ config (other servers are untouched) and never runs on its own — not from
 scripts/install-mcp.sh
 ```
 
+Registration is user-wide, available across projects (Claude Code uses `--scope user`).
+The installer prefers `--binary`, otherwise it uses the executable on `PATH`, including Homebrew.
+
 Or register by hand — all four clients below point `command` at the binary
 Homebrew already put on your `PATH`; run `which app-store-connect-mcp` first and
 use that absolute path if a client doesn't inherit your shell's `PATH` (GUI apps
@@ -260,7 +263,7 @@ often don't).
 #### Claude Code
 
 ```bash
-claude mcp add app-store-connect \
+claude mcp add --scope user app-store-connect \
   --env ASC_KEY_ID=… \
   --env ASC_ISSUER_ID=… \
   --env ASC_PRIVATE_KEY_PATH=/absolute/path/AuthKey_XXXX.p8 \

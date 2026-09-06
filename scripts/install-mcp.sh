@@ -112,7 +112,7 @@ PY
 # --- Claude Code -------------------------------------------------------------
 if command -v claude >/dev/null 2>&1; then
     if confirm "Register with Claude Code (claude mcp add, user scope)?"; then
-        claude mcp add app-store-connect \
+        claude mcp add --scope user app-store-connect \
             --env "ASC_KEY_ID=${ASC_KEY_ID}" \
             --env "ASC_ISSUER_ID=${ASC_ISSUER_ID}" \
             --env "ASC_PRIVATE_KEY_PATH=${ASC_PRIVATE_KEY_PATH}" \
