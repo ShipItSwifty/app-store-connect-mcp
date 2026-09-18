@@ -15,13 +15,22 @@ let package = Package(
         .executable(name: "app-store-connect-mcp", targets: ["AppStoreConnectMCPServer"]),
     ],
     dependencies: [
-        // jwt-kit 5.6.0 needs swift-crypto >= 4.1.0; stay on the 4.x line
-        // (5.x is still pre-release) and track its latest stable.
-        .package(url: "https://github.com/apple/swift-crypto", "4.5.2"..<"5.0.0"),
-        .package(url: "https://github.com/vapor/jwt-kit", .upToNextMinor(from: "5.7.0")),
+        // Blocked on swift-crypto 5.0.0: jwt-kit's own manifest has no crypto upper bound,
+        // but it pulls in apple/swift-certificates (for X509), which still hard-pins
+        // swift-crypto to "3.12.3"..<"5.0.0" as of swift-certificates 1.20.0 (2026-09) and
+        // even on its main branch — the only opt-in is SWIFT_CERTIFICATES_ALLOW_SWIFT_CRYPTO_BETA,
+        // which itself excludes the final 5.0.0 tag (upper bound is "5.0.0-beta.max" < "5.0.0").
+        // Re-attempt once swift-certificates ships crypto-5.0 support.
+        .package(url: "https://github.com/apple/swift-crypto", from: "4.5.2"),
+        .package(url: "https://github.com/vapor/jwt-kit", .upToNextMajor(from: "5.7.1")),
         .package(url: "https://github.com/apple/swift-log", from: "1.12.0"),
         .package(url: "https://github.com/maniramezan/SwiftyShell.git", from: "0.5.0"),
-        .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", from: "0.12.1"),
+        // Pin the SDK fix for object-valued experimental capabilities sent by Codex.
+        // Return to upstream once a release includes this decoding fix.
+        .package(
+            url: "https://github.com/maniramezan/swift-sdk.git",
+            revision: "46dec85bd63c1e4909718b024d243bc92c7d403d"
+        ),
         // Documentation only; contributes no code to any product.
         .package(url: "https://github.com/apple/swift-docc-plugin", from: "1.5.0"),
     ],
