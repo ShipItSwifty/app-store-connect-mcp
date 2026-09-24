@@ -252,13 +252,18 @@ enum AppStoreTools {
             description: """
                 Report this key's current App Store Connect hourly rate-limit position: the \
                 limit, requests remaining, percentage used, and the threshold at which this \
-                server starts pausing requests. This is a local snapshot and makes no API \
-                request. Returns {"known": false} until a first response has been seen.
+                server starts pausing requests. Reuses a reading from the last minute; \
+                otherwise makes one cheap request. Returns {"known": false} if no \
+                rate-limit header is available.
                 """,
             outputSchema: CITools.rateLimitOutputSchema
         ) { _, makeClient in
             let client = try makeClient()
-            guard let status = await client.rateLimiter.status() else {
+            if let recent = await client.rateLimiter.status(maxAge: .seconds(60)) {
+                return try json(RateLimitReport(known: true, status: recent))
+            }
+            _ = try? await client.apps(limit: 1)
+            guard let status = await client.rateLimiter.status(maxAge: .seconds(60)) else {
                 return try json(RateLimitReport(known: false, status: nil))
             }
             return try json(RateLimitReport(known: true, status: status))

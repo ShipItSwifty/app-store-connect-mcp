@@ -372,7 +372,7 @@ enum CITools {
     /// Encodes a tool's payload as one text block.
     static func json<T: Encodable>(_ value: T) throws -> CallTool.Result {
         let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         let data = try encoder.encode(value)
         let structuredContent = try JSONDecoder().decode(Value.self, from: data)
         return try CallTool.Result(

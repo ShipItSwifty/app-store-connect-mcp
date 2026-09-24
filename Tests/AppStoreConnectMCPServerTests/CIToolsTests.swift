@@ -257,7 +257,7 @@ struct CIToolsTests {
 
         #expect(result.isError == false)
         let payload = text(result)
-        #expect(payload.contains("\"found\" : true"))
+        #expect(payload.contains("\"found\":true"))
         #expect(payload.contains("run-9"))
         #expect(payload.contains("latest boom"))
     }
@@ -276,7 +276,7 @@ struct CIToolsTests {
         ) { client }
 
         #expect(result.isError == false)
-        #expect(text(result).contains("\"found\" : false"))
+        #expect(text(result).contains("\"found\":false"))
     }
 
     @Test("asc_ci_latest_failure without a scope throws ASCError.invalidConfiguration")
@@ -397,6 +397,6 @@ struct CIToolsTests {
         #expect(result.isError == false)
         #expect(text(result).contains("METADATA_REJECTED"))
         #expect(text(result).lowercased().contains("metadata"))
-        #expect(text(result).contains("\"buildAttached\" : true") || text(result).contains("\"buildAttached\":true"))
+        #expect(text(result).contains("\"buildAttached\":true"))
     }
 }
