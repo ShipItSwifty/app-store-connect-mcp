@@ -36,11 +36,26 @@ struct AppStoreConnectMCP {
         let server = Server(
             name: "app-store-connect-mcp",
             version: ASCMCPVersion.current,
-            capabilities: .init(tools: .init(listChanged: false))
+            capabilities: .init(
+                resources: .init(subscribe: false, listChanged: false),
+                tools: .init(listChanged: false)
+            )
         )
 
         await server.withMethodHandler(ListTools.self) { _ in
             .init(tools: CITools.all)
+        }
+
+        await server.withMethodHandler(ListResources.self) { _ in
+            .init(resources: ServerResources.resources)
+        }
+
+        await server.withMethodHandler(ListResourceTemplates.self) { _ in
+            .init(templates: ServerResources.templates)
+        }
+
+        await server.withMethodHandler(ReadResource.self) { params in
+            try await ServerResources.read(uri: params.uri)
         }
 
         await server.withMethodHandler(CallTool.self) { params in
