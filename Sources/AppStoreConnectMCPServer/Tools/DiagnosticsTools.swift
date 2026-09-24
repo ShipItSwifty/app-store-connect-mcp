@@ -2,7 +2,7 @@ import AppStoreConnectKit
 import Foundation
 import MCP
 
-/// Tools for what real devices report, as opposed to what CI reports: crash, hang and
+/// Tools for what real devices report, as opposed to what CI reports: hang, launch and
 /// disk-write signatures with their call stacks, TestFlight crash logs, and the Xcode
 /// Organizer power-and-performance metrics.
 ///
@@ -17,7 +17,7 @@ enum DiagnosticsTools {
         ToolSpec(
             name: "asc_list_diagnostic_signatures",
             description: """
-                List the crash, hang, and excessive-disk-write signatures real devices \
+                List the hang, slow-launch, and excessive-disk-write signatures real devices \
                 reported against a build — the data behind Xcode's Organizer. Each signature \
                 is one class of problem rolled up across every device that hit it, with a \
                 'weight' (how many reports) and an insight saying whether it is worse than \

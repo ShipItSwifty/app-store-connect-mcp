@@ -48,10 +48,13 @@ coverage climbs, don't lower it without a reason.
   that returns a collection, or you silently truncate at one page.
 - **The `ci*` endpoints need a Team key** with Developer / App Manager / Admin access;
   finance/sales-only keys get 403 on them while metadata calls still succeed.
-- **jwt-kit tracks 5.6.x (`.upToNextMinor`).** It resolves swift-crypto `>= 4.1.0`;
-  the manifest holds swift-crypto on `4.5.2 ..< 5.0.0` because swift-crypto 5.x is
-  still pre-release. The old "5.5+ needs ML-DSA / a newer swift-crypto" pin no
-  longer applies — 5.6.0 builds on the 4.x crypto line the stable CI images carry.
+- **jwt-kit is `.upToNextMajor(from: "5.7.1")`; swift-crypto is `from: "4.5.2"`
+  (so `< 5.0.0`).** swift-crypto 5 is blocked on apple/swift-certificates, which jwt-kit
+  pulls in and which still caps crypto below 5.0.0 — see the comment in `Package.swift`
+  before trying to lift it.
+- **The MCP SDK is a pinned fork revision** (`maniramezan/swift-sdk`), for a decoding
+  fix to object-valued experimental capabilities that Codex sends
+  (`ExperimentalCapabilitiesTests`). Return to upstream once a release carries it.
 - **`betaGroups.publicLink` is a URL string, not a Bool.** It was modelled as `Bool`
   and threw `typeMismatch` for every group with a public link enabled. Apple's
   attribute types are worth checking against the docs JSON
@@ -82,6 +85,12 @@ coverage climbs, don't lower it without a reason.
   `DiagnosticsTools`, `ReviewTools`, `ReportingTools` and — only when
   `ASC_ENABLE_WRITES` is set — `WriteTools`. Several files, still one catalog and no
   separate `switch` to update. Adding a tool means adding one spec.
+- `Sources/AppStoreConnectMCPServer/Prompts/ServerPrompts.swift` — `ServerInstructions`
+  (the `initialize` instructions) and `ServerPrompts` (MCP prompts, one `PromptSpec`
+  each). `ServerPromptsTests` fails if either names a tool the catalog doesn't
+  advertise, or a prompt names a write tool — rename a tool and they must follow.
+- `skills/app-store-connect/SKILL.md` — the Claude Code skill; same playbooks as the
+  prompts, in more depth. Keep the two in step when a workflow changes.
 - **Writes are opt-in and must stay that way.** A default deployment advertises a
   catalog whose every tool is `readOnlyHint: true`, which is what lets a host
   auto-approve a whole investigation. Anything that mutates belongs in `WriteTools`
