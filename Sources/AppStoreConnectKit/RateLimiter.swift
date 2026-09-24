@@ -52,6 +52,9 @@ public actor RateLimiter {
 
     private var hourlyLimit: Int?
     private var hourlyRemaining: Int?
+    /// When a complete `X-Rate-Limit` header was last parsed. Package-internal so
+    /// tests can age it without sleeping.
+    private(set) var lastUpdated: ContinuousClock.Instant?
     private let logger = Logger.forType(subsystem: "AppStoreConnectKit", RateLimiter.self)
 
     /// Creates a `RateLimiter`.
@@ -92,6 +95,9 @@ public actor RateLimiter {
             return
         }
         parse(header: header)
+        if hourlyLimit != nil, hourlyRemaining != nil {
+            lastUpdated = .now
+        }
     }
 
     /// The most recently parsed `(limit, remaining)` pair, or `nil` before any
@@ -120,6 +126,21 @@ public actor RateLimiter {
             usedFraction: used,
             throttleThreshold: throttleThreshold
         )
+    }
+
+    /// The current position, but only if a response reported it within `maxAge`.
+    ///
+    /// Lets a caller that wants the position skip a request made purely to learn it
+    /// when another call has just seen the header. Returns `nil` when nothing recent
+    /// is known.
+    public func status(maxAge: Duration) -> RateLimitStatus? {
+        status(maxAge: maxAge, now: .now)
+    }
+
+    /// ``status(maxAge:)`` against an explicit clock reading, for tests.
+    func status(maxAge: Duration, now: ContinuousClock.Instant) -> RateLimitStatus? {
+        guard let lastUpdated, lastUpdated.duration(to: now) <= maxAge else { return nil }
+        return status()
     }
 
     // MARK: - Private

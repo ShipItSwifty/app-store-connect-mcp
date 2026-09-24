@@ -259,4 +259,41 @@ struct AppStoreAPITests {
         try await client.delete("/v1/betaTesters/t1")
         #expect(observed.value == ["DELETE"])
     }
+
+    @Test("appID(bundleID:) looks a bundle id up once and answers from cache after that")
+    func appIDIsCached() async throws {
+        let observed = LockedBox<[String]>([])
+        let client = makeClientRecording(
+            observedURLs: observed,
+            responses: [
+                .json(["data": [["id": "6740000001", "attributes": ["bundleId": "com.example.app"]]]])
+            ]
+        )
+
+        #expect(try await client.appID(bundleID: "com.example.app") == "6740000001")
+        // Only one response is queued: a second request would get the mock's 500.
+        #expect(try await client.appID(bundleID: "com.example.app") == "6740000001")
+        #expect(observed.value.count == 1)
+    }
+
+    @Test("A bundle id with no app is not cached, and the error names it")
+    func unknownBundleIDIsNotCached() async throws {
+        let observed = LockedBox<[String]>([])
+        let client = makeClientRecording(
+            observedURLs: observed,
+            responses: [
+                .json(["data": []]),
+                .json(["data": [["id": "6740000002", "attributes": ["bundleId": "com.example.late"]]]]),
+            ]
+        )
+
+        do {
+            _ = try await client.appID(bundleID: "com.example.late")
+            Issue.record("expected a not-found error")
+        } catch let error as ASCError {
+            #expect(error.localizedDescription.contains("com.example.late"))
+        }
+        #expect(try await client.appID(bundleID: "com.example.late") == "6740000002")
+        #expect(observed.value.count == 2)
+    }
 }
