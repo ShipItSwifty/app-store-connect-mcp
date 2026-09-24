@@ -542,45 +542,49 @@ enum CITools {
             "startedDate": nullable("string"),
             "finishedDate": nullable("string"),
             "durationSeconds": nullable("number"),
-            "issues": arraySchema(of: objectSchema(
-                properties: [
-                    "type": nullable("string"),
-                    "message": nullable("string"),
-                    "path": nullable("string"),
-                    "line": nullable("integer"),
-                ]
-            )),
-            "failedTests": arraySchema(of: objectSchema(
-                properties: [
-                    "className": nullable("string"),
-                    "name": nullable("string"),
-                    "status": nullable("string"),
-                    "message": nullable("string"),
-                ]
-            )),
-            "artifacts": arraySchema(of: objectSchema(
-                properties: [
-                    "fileType": nullable("string"),
-                    "fileName": nullable("string"),
-                    "downloadUrl": nullable("string"),
-                ]
-            )),
+            "issues": arraySchema(
+                of: objectSchema(
+                    properties: [
+                        "type": nullable("string"),
+                        "message": nullable("string"),
+                        "path": nullable("string"),
+                        "line": nullable("integer"),
+                    ]
+                )),
+            "failedTests": arraySchema(
+                of: objectSchema(
+                    properties: [
+                        "className": nullable("string"),
+                        "name": nullable("string"),
+                        "status": nullable("string"),
+                        "message": nullable("string"),
+                    ]
+                )),
+            "artifacts": arraySchema(
+                of: objectSchema(
+                    properties: [
+                        "fileType": nullable("string"),
+                        "fileName": nullable("string"),
+                        "downloadUrl": nullable("string"),
+                    ]
+                )),
         ],
         required: ["id", "issues", "failedTests", "artifacts"]
     )
 
     private static let logAnalysisSchema = objectSchema(
         properties: [
-            "findings": arraySchema(of: objectSchema(
-                properties: [
-                    "kind": .string("string"),
-                    "message": .string("string"),
-                    "path": nullable("string"),
-                    "line": nullable("integer"),
-                    "rawLine": .string("string"),
-                ],
-                required: ["kind", "message", "rawLine"]
-            )),
+            "findings": arraySchema(
+                of: objectSchema(
+                    properties: [
+                        "kind": .string("string"),
+                        "message": .string("string"),
+                        "path": nullable("string"),
+                        "line": nullable("integer"),
+                        "rawLine": .string("string"),
+                    ],
+                    required: ["kind", "message", "rawLine"]
+                )),
             "linesScanned": .string("integer"),
         ],
         required: ["findings", "linesScanned"]
@@ -591,27 +595,30 @@ enum CITools {
             "request": objectSchema(
                 properties: [
                     "id": .string("string"),
-                    "attributes": nullableObject(objectSchema(
-                        properties: [
-                            "accessType": nullable("string"),
-                            "stoppedDueToInactivity": nullable("boolean"),
-                        ]
-                    )),
+                    "attributes": nullableObject(
+                        objectSchema(
+                            properties: [
+                                "accessType": nullable("string"),
+                                "stoppedDueToInactivity": nullable("boolean"),
+                            ]
+                        )),
                 ],
                 required: ["id"]
             ),
-            "reports": arraySchema(of: objectSchema(
-                properties: [
-                    "id": .string("string"),
-                    "attributes": nullableObject(objectSchema(
-                        properties: [
-                            "name": nullable("string"),
-                            "category": nullable("string"),
-                        ]
-                    )),
-                ],
-                required: ["id"]
-            )),
+            "reports": arraySchema(
+                of: objectSchema(
+                    properties: [
+                        "id": .string("string"),
+                        "attributes": nullableObject(
+                            objectSchema(
+                                properties: [
+                                    "name": nullable("string"),
+                                    "category": nullable("string"),
+                                ]
+                            )),
+                    ],
+                    required: ["id"]
+                )),
         ],
         required: ["request", "reports"]
     )
@@ -676,17 +683,18 @@ enum CITools {
             "event": nullable("string"),
             "eventDetail": nullable("string"),
             "writesCaused": nullable("string"),
-            "blameFrames": arraySchema(of: objectSchema(
-                properties: [
-                    "symbolName": nullable("string"),
-                    "binaryName": nullable("string"),
-                    "fileName": nullable("string"),
-                    "lineNumber": nullable("string"),
-                    "sampleCount": nullable("integer"),
-                    "depth": .string("integer"),
-                ],
-                required: ["depth"]
-            )),
+            "blameFrames": arraySchema(
+                of: objectSchema(
+                    properties: [
+                        "symbolName": nullable("string"),
+                        "binaryName": nullable("string"),
+                        "fileName": nullable("string"),
+                        "lineNumber": nullable("string"),
+                        "sampleCount": nullable("integer"),
+                        "depth": .string("integer"),
+                    ],
+                    required: ["depth"]
+                )),
             "totalFrames": .string("integer"),
         ],
         required: ["blameFrames", "totalFrames"]

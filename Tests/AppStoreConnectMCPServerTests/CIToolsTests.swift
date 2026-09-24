@@ -84,7 +84,10 @@ struct CIToolsTests {
 
     @Test("Report tools advertise output schemas")
     func reportToolsHaveOutputSchemas() {
-        for name in ["asc_ci_failure_report", "asc_ci_failure_report_with_logs", "asc_ci_latest_failure", "asc_get_analytics_report", "asc_sales_report", "asc_get_diagnostic_logs", "asc_perf_power_metrics"] {
+        for name in [
+            "asc_ci_failure_report", "asc_ci_failure_report_with_logs", "asc_ci_latest_failure", "asc_get_analytics_report",
+            "asc_sales_report", "asc_get_diagnostic_logs", "asc_perf_power_metrics",
+        ] {
             #expect(CITools.all.first(where: { $0.name == name })?.outputSchema != nil, "\(name) should expose outputSchema")
         }
     }

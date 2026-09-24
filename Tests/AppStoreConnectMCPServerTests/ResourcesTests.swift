@@ -20,7 +20,7 @@ struct ResourcesTests {
                 ["data": [["id": "app-1", "attributes": ["bundleId": "com.example.app"]]]],
                 pathContains: "/v1/apps"
             ),
-            jsonCanned(["data": []], pathContains: "/ciProducts")
+            jsonCanned(["data": []], pathContains: "/ciProducts"),
         ])
         let result = try await MCPResources.read(
             uri: "asc://apps/com.example.app/latest-failure",
