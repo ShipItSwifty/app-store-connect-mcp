@@ -265,7 +265,7 @@ enum AppStoreTools {
             // Otherwise make the cheapest call there is (a single-app page) purely to
             // learn the current position.
             _ = try? await client.apps(limit: 1)
-            guard let status = await client.rateLimiter.status() else {
+            guard let status = await client.rateLimiter.status(maxAge: .seconds(60)) else {
                 return try json(RateLimitReport(known: false, status: nil))
             }
             return try json(RateLimitReport(known: true, status: status))

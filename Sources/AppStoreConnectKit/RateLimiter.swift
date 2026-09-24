@@ -94,10 +94,11 @@ public actor RateLimiter {
         guard let header = headers["X-Rate-Limit"] ?? headers["x-rate-limit"] else {
             return
         }
-        parse(header: header)
-        if hourlyLimit != nil, hourlyRemaining != nil {
-            lastUpdated = .now
-        }
+        guard let parsed = parse(header: header) else { return }
+        hourlyLimit = parsed.limit
+        hourlyRemaining = parsed.remaining
+        lastUpdated = .now
+        logger.debug("Rate limit updated: \(parsed.remaining)/\(parsed.limit) remaining this hour")
     }
 
     /// The most recently parsed `(limit, remaining)` pair, or `nil` before any
@@ -145,8 +146,10 @@ public actor RateLimiter {
 
     // MARK: - Private
 
-    private func parse(header: String) {
+    private func parse(header: String) -> (limit: Int, remaining: Int)? {
         // Format: "user-hour-lim:3500;user-hour-rem:2998"
+        var limit: Int?
+        var remaining: Int?
         let parts = header.components(separatedBy: ";")
         for part in parts {
             let kv = part.components(separatedBy: ":")
@@ -154,13 +157,12 @@ public actor RateLimiter {
             let key = kv[0].trimmingCharacters(in: .whitespaces)
             let value = kv[1].trimmingCharacters(in: .whitespaces)
             if key == "user-hour-lim", let intValue = Int(value) {
-                hourlyLimit = intValue
+                limit = intValue
             } else if key == "user-hour-rem", let intValue = Int(value) {
-                hourlyRemaining = intValue
+                remaining = intValue
             }
         }
-        if let limit = hourlyLimit, let remaining = hourlyRemaining {
-            logger.debug("Rate limit updated: \(remaining)/\(limit) remaining this hour")
-        }
+        guard let limit, let remaining else { return nil }
+        return (limit, remaining)
     }
 }
