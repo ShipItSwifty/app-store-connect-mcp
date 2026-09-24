@@ -82,6 +82,10 @@ coverage climbs, don't lower it without a reason.
   `DiagnosticsTools`, `ReviewTools`, `ReportingTools` and — only when
   `ASC_ENABLE_WRITES` is set — `WriteTools`. Several files, still one catalog and no
   separate `switch` to update. Adding a tool means adding one spec.
+- `Sources/AppStoreConnectMCPServer/Resources/ServerResources.swift` — MCP resources.
+  Each `ResourceSpec` names a URI (template) and the read-only tool that serves it; URI
+  placeholders are that tool's argument names. `ServerResourcesTests` fails if a
+  resource points at a missing or write tool, or leaves a required argument unbound.
 - **Writes are opt-in and must stay that way.** A default deployment advertises a
   catalog whose every tool is `readOnlyHint: true`, which is what lets a host
   auto-approve a whole investigation. Anything that mutates belongs in `WriteTools`

@@ -226,6 +226,28 @@ Each tool is one `ToolSpec` that carries both its JSON Schema and its handler, s
 advertised catalog and the dispatcher cannot drift apart; adding a tool means adding
 one entry to `CITools.specs`.
 
+### Resources
+
+The same data is addressable as MCP resources, so a host can attach it to a
+conversation without the model spending a tool call — in Claude Code, `@`-mention it
+(e.g. `@app-store-connect:asc://apps`). Each resource reads through the read-only tool
+named beside it and returns that tool's JSON.
+
+| URI | Tool |
+|---|---|
+| `asc://apps` | `asc_list_apps` |
+| `asc://signing-assets` | `asc_signing_assets` |
+| `asc://rate-limit` | `asc_rate_limit_status` |
+| `asc://apps/{app_id}/ci/latest-failure` | `asc_ci_latest_failure` |
+| `asc://apps/{app_id}/versions` | `asc_list_app_store_versions` |
+| `asc://apps/{app_id}/builds` | `asc_list_builds` |
+| `asc://bundles/{bundle_id}/submission-status` | `asc_submission_status` |
+| `asc://bundles/{bundle_id}/testflight` | `asc_testflight_build_status` |
+| `asc://ci/build-runs/{build_run_id}/failure-report` | `asc_ci_failure_report` |
+
+The first three are listed by `resources/list`; the rest are templates
+(`resources/templates/list`).
+
 **A note on "failed":** `failed_only` and `asc_ci_latest_failure` treat a *run* as
 failed when its `completionStatus` is `FAILED`, `ERRORED`, or `INVALID` — a run
 someone canceled by hand is not a red build. The failure reports additionally collect
