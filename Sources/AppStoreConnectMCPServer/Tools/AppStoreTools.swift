@@ -253,7 +253,8 @@ enum AppStoreTools {
                 limit, requests remaining, percentage used, and the threshold at which this \
                 server starts pausing requests. Costs one cheap request. Check it before a \
                 broad scan. Returns {"known": false} until a first response has been seen.
-                """
+                """,
+            outputSchema: OutputSchemas.rateLimitReport
         ) { _, makeClient in
             let client = try makeClient()
             // The limit is only known from a response header, so make the cheapest call

@@ -98,6 +98,10 @@ struct ToolSpec: Sendable {
     /// what lets a client auto-approve a call instead of prompting for every lookup —
     /// worth carrying, since an investigation is dozens of calls deep.
     let isReadOnly: Bool
+    /// JSON Schema of the result, for tools whose payload is one of this package's own
+    /// report models. When set, the tool advertises it as `outputSchema` and its result
+    /// carries the payload as `structuredContent` too. See ``OutputSchemas``.
+    let outputSchema: Value?
     let handler: Handler
 
     init(
@@ -105,12 +109,14 @@ struct ToolSpec: Sendable {
         description: String,
         arguments: [ToolArgument] = [],
         isReadOnly: Bool = true,
+        outputSchema: Value? = nil,
         handler: @escaping Handler
     ) {
         self.name = name
         self.description = description
         self.arguments = arguments
         self.isReadOnly = isReadOnly
+        self.outputSchema = outputSchema
         self.handler = handler
     }
 
@@ -143,7 +149,29 @@ struct ToolSpec: Sendable {
                 idempotentHint: isReadOnly,
                 // Every tool talks to Apple's servers, whose state this server does not own.
                 openWorldHint: true
-            )
+            ),
+            outputSchema: outputSchema
         )
+    }
+}
+
+extension CallTool.Result {
+    /// This result with its JSON payload also attached as `structuredContent`.
+    ///
+    /// The text block stays, as the spec asks, for hosts that only read `content`.
+    /// Only a JSON object qualifies — `structuredContent` must be one — and an error
+    /// result is returned unchanged.
+    func addingStructuredContent() -> CallTool.Result {
+        guard isError != true else { return self }
+        for block in content {
+            guard case .text(let text, _, _) = block,
+                let value = try? JSONDecoder().decode(Value.self, from: Data(text.utf8)),
+                case .object = value
+            else { continue }
+            // `Optional.some` pins the non-throwing overload; a bare `Value` would match
+            // the SDK's generic `Codable` initializer, which throws.
+            return CallTool.Result(content: content, structuredContent: Optional.some(value), isError: isError, _meta: _meta)
+        }
+        return self
     }
 }

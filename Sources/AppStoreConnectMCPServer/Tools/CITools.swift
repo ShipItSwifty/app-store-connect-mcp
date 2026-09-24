@@ -148,7 +148,8 @@ enum CITools {
             arguments: [
                 .string("build_run_id", "Xcode Cloud build run id.", required: true),
                 .string("workflow_name", "Optional workflow name to embed for context."),
-            ]
+            ],
+            outputSchema: OutputSchemas.failureReport
         ) { args, makeClient in
             try json(
                 await makeClient().ciFailureReport(
@@ -168,7 +169,8 @@ enum CITools {
             arguments: [
                 .string("build_run_id", "Xcode Cloud build run id.", required: true),
                 .string("workflow_name", "Optional workflow name to embed for context."),
-            ]
+            ],
+            outputSchema: OutputSchemas.failureReportWithLogs
         ) { args, makeClient in
             try json(
                 await makeClient().ciFailureReportWithLogs(
@@ -196,7 +198,8 @@ enum CITools {
                     "app_id",
                     "App Store Connect app id — scan every workflow of every Xcode Cloud product of this app."
                 ),
-            ]
+            ],
+            outputSchema: OutputSchemas.latestFailure
         ) { args, makeClient in
             try json(
                 await makeClient().ciLatestFailureReport(
@@ -236,7 +239,8 @@ enum CITools {
                 """,
             arguments: [
                 .string("bundle_id", "The app's bundle identifier (e.g. com.example.app).", required: true)
-            ]
+            ],
+            outputSchema: OutputSchemas.submissionStatus
         ) { args, makeClient in
             let service = AppStoreSubmissionService(client: try makeClient())
             return try json(await service.status(bundleID: args.require("bundle_id")))
@@ -286,7 +290,11 @@ enum CITools {
             + "(\(status.remaining)/\(status.limit) requests left this hour). "
             + "Requests pause automatically at \(Int((status.throttleThreshold * 100).rounded()))% — "
             + "consider narrowing further calls."
-        return .init(content: result.content + [.plainText(hint)], isError: result.isError)
+        return .init(
+            content: result.content + [.plainText(hint)],
+            structuredContent: result.structuredContent,
+            isError: result.isError
+        )
     }
 
     /// Looks a tool up by name and runs its handler.
@@ -303,7 +311,8 @@ enum CITools {
             }
             return .init(content: [.plainText("Unknown tool: \(name)")], isError: true)
         }
-        return try await spec.handler(ToolArguments(arguments), makeClient)
+        let result = try await spec.handler(ToolArguments(arguments), makeClient)
+        return spec.outputSchema == nil ? result : result.addingStructuredContent()
     }
 
     // MARK: - Helpers

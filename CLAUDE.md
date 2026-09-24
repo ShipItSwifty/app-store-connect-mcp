@@ -82,6 +82,11 @@ coverage climbs, don't lower it without a reason.
   `DiagnosticsTools`, `ReviewTools`, `ReportingTools` and — only when
   `ASC_ENABLE_WRITES` is set — `WriteTools`. Several files, still one catalog and no
   separate `switch` to update. Adding a tool means adding one spec.
+- **`outputSchema` is a contract.** A tool with one (`ToolSpec.outputSchema`, schemas in
+  `Tools/OutputSchemas.swift`) gets its JSON copied into `structuredContent`, and hosts
+  that validate will reject a result that doesn't match. Change the model, change the
+  schema: `StructuredOutputTests`' `schemaViolations` runs over the mocked report tests.
+  Only non-optional stored properties may be `required` (nil optionals are omitted).
 - **Writes are opt-in and must stay that way.** A default deployment advertises a
   catalog whose every tool is `readOnlyHint: true`, which is what lets a host
   auto-approve a whole investigation. Anything that mutates belongs in `WriteTools`
