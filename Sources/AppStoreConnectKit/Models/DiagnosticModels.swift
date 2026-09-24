@@ -12,7 +12,7 @@ import Foundation
 // each raw shape has a normalized summary alongside it (``DiagnosticLogSummary``,
 // ``PerfPowerMetricsSummary``) that keeps the parts a reader acts on.
 
-/// A `diagnosticSignatures` resource — one class of crash, hang, or excessive
+/// A `diagnosticSignatures` resource — one class of hang, slow launch, or excessive
 /// disk write, aggregated across the devices that reported it.
 public struct ASCDiagnosticSignature: Codable, Sendable {
     /// Unique identifier, used to fetch the signature's logs.
