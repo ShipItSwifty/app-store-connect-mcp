@@ -79,4 +79,24 @@ struct RateLimiterTests {
         let status = try #require(await limiter.status())
         #expect(!status.isNearLimit)
     }
+
+    @Test("status(maxAge:) answers only while the last header is recent enough")
+    func recentStatusRespectsMaxAge() async throws {
+        let limiter = RateLimiter()
+        #expect(await limiter.status(maxAge: .seconds(60)) == nil)
+
+        await limiter.update(from: ["X-Rate-Limit": "user-hour-lim:3500;user-hour-rem:700"])
+        let stamp = try #require(await limiter.lastUpdated)
+
+        let fresh = await limiter.status(maxAge: .seconds(60), now: stamp + .seconds(30))
+        #expect(fresh?.remaining == 700)
+        #expect(await limiter.status(maxAge: .seconds(60), now: stamp + .seconds(61)) == nil)
+    }
+
+    @Test("A header missing either half does not count as a fresh reading")
+    func partialHeaderDoesNotStamp() async {
+        let limiter = RateLimiter()
+        await limiter.update(from: ["X-Rate-Limit": "user-hour-lim:3500"])
+        #expect(await limiter.lastUpdated == nil)
+    }
 }

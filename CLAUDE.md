@@ -82,6 +82,14 @@ coverage climbs, don't lower it without a reason.
   `DiagnosticsTools`, `ReviewTools`, `ReportingTools` and — only when
   `ASC_ENABLE_WRITES` is set — `WriteTools`. Several files, still one catalog and no
   separate `switch` to update. Adding a tool means adding one spec.
+- **Tool output is compact JSON** (`CITools.json`: sorted keys, no pretty-printing), and
+  `asc_api_get` passes Apple's body through verbatim. Tests assert on `"key":value`
+  with no spaces.
+- **One `AppStoreConnectClient` per server process** (`CITools.defaultClient`), so the
+  JWT, the `RateLimiter` position, and the bundle-id → app cache (`appID(bundleID:)`)
+  persist across tool calls. Tests inject their own client through
+  `CITools.dispatch(…makeClient:)` and never touch the shared one — and a fresh mock
+  client per test is what keeps the bundle-id cache from leaking between tests.
 - **Writes are opt-in and must stay that way.** A default deployment advertises a
   catalog whose every tool is `readOnlyHint: true`, which is what lets a host
   auto-approve a whole investigation. Anything that mutates belongs in `WriteTools`

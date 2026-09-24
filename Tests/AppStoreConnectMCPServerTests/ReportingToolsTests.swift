@@ -61,7 +61,7 @@ struct ReportingToolsTests {
             ["app_id": .string("123")],
             [jsonCanned(["data": []])]
         )
-        #expect(text(result).contains("\"found\" : false"))
+        #expect(text(result).contains("\"found\":false"))
         #expect(result.isError != true, "an app nobody has enabled analytics for is not a failure")
     }
 
@@ -103,7 +103,7 @@ struct ReportingToolsTests {
             ["report_date": .string("2026-01-01"), "vendor_number": .string("80000123")],
             [.init(statusCode: 200, body: gzippedTSV)]
         )
-        #expect(text(found).contains("\"found\" : true"))
+        #expect(text(found).contains("\"found\":true"))
         #expect(text(found).contains("APPLE"))
 
         let missing = try await call(
@@ -111,6 +111,6 @@ struct ReportingToolsTests {
             ["report_date": .string("2026-01-02"), "vendor_number": .string("80000123")],
             [jsonCanned(["errors": [["detail": "no sales"]]], statusCode: 404)]
         )
-        #expect(text(missing).contains("\"found\" : false"))
+        #expect(text(missing).contains("\"found\":false"))
     }
 }
