@@ -291,7 +291,7 @@ enum AppStoreTools {
             let (path, inlineQuery) = try parseAPIPath(args.require("path"))
             let query = try inlineQuery.merging(parseQueryObject(args.string("query"))) { _, explicit in explicit }
             let data = try await makeClient().getRaw(path, query: query)
-            return .init(content: [.plainText(prettyPrinted(data))], isError: false)
+            return .init(content: [.plainText(String(decoding: data, as: UTF8.self))], isError: false)
         },
     ]
 
@@ -371,18 +371,6 @@ enum AppStoreTools {
             default: result[pair.key] = String(describing: pair.value)
             }
         }
-    }
-
-    /// Re-formats a raw JSON body for readability, passing it through unchanged if it
-    /// is not JSON after all.
-    static func prettyPrinted(_ data: Data) -> String {
-        guard let object = try? JSONSerialization.jsonObject(with: data),
-            let pretty = try? JSONSerialization.data(
-                withJSONObject: object,
-                options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-            )
-        else { return String(decoding: data, as: UTF8.self) }
-        return String(decoding: pretty, as: UTF8.self)
     }
 
     private static func json<T: Encodable>(_ value: T) throws -> CallTool.Result {

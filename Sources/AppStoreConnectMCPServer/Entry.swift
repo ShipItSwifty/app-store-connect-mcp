@@ -36,11 +36,23 @@ struct AppStoreConnectMCP {
         let server = Server(
             name: "app-store-connect-mcp",
             version: ASCMCPVersion.current,
-            capabilities: .init(tools: .init(listChanged: false))
+            instructions: ServerInstructions.text,
+            capabilities: .init(
+                prompts: .init(listChanged: false),
+                tools: .init(listChanged: false)
+            )
         )
 
         await server.withMethodHandler(ListTools.self) { _ in
             .init(tools: CITools.all)
+        }
+
+        await server.withMethodHandler(ListPrompts.self) { _ in
+            .init(prompts: ServerPrompts.all)
+        }
+
+        await server.withMethodHandler(GetPrompt.self) { params in
+            try ServerPrompts.get(name: params.name, arguments: params.arguments ?? [:])
         }
 
         await server.withMethodHandler(CallTool.self) { params in
@@ -81,8 +93,9 @@ struct AppStoreConnectMCP {
 
         The API key must be a Team key with Developer, App Manager, or Admin access
         — the Xcode Cloud (ci*) endpoints return 403 for finance/sales/support/
-        marketing-only keys, while the App Store metadata tools still work. Signed tokens carry aud "appstoreconnect-v1" (handled
-        by AppStoreConnectKit); a missing/wrong aud is the usual cause of a 401.
+        marketing-only keys, while the App Store metadata tools still work. Signed
+        tokens carry aud "appstoreconnect-v1" (handled by AppStoreConnectKit); a
+        missing/wrong aud is the usual cause of a 401.
         """
 }
 

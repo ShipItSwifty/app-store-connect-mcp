@@ -58,7 +58,7 @@ struct AppStoreToolsTests {
                 jsonCanned(["data": [["id": "b1", "attributes": ["version": "142"]]]], pathContains: "/v1/builds"),
             ]
         )
-        #expect(text(result).contains("\"version\" : \"142\""))
+        #expect(text(result).contains("\"version\":\"142\""))
     }
 
     @Test("An app-scoped tool with neither app_id nor bundle_id says which argument is missing")
@@ -116,7 +116,7 @@ struct AppStoreToolsTests {
         let payload = text(result)
         #expect(payload.contains("WAITING_FOR_BETA_REVIEW"))
         #expect(payload.contains("Fixed it."))
-        #expect(payload.contains("\"found\" : true"))
+        #expect(payload.contains("\"found\":true"))
     }
 
     @Test("asc_testflight_build_status reports found:false rather than failing when there is no build")
@@ -126,7 +126,7 @@ struct AppStoreToolsTests {
             ["app_id": .string("123")],
             [jsonCanned(["data": []], pathContains: "/v1/builds")]
         )
-        #expect(text(result).contains("\"found\" : false"))
+        #expect(text(result).contains("\"found\":false"))
     }
 
     @Test("Each remaining App Store tool returns the resource it advertises")
@@ -179,7 +179,7 @@ struct AppStoreToolsTests {
             [jsonCanned(["data": []], headers: ["X-Rate-Limit": "user-hour-lim:3500;user-hour-rem:700"])]
         )
         let payload = text(result)
-        #expect(payload.contains("\"known\" : true"))
+        #expect(payload.contains("\"known\":true"))
         #expect(payload.contains("3500"))
         #expect(payload.contains("700"))
     }
@@ -187,7 +187,7 @@ struct AppStoreToolsTests {
     @Test("asc_rate_limit_status says so rather than guessing when no header has been seen")
     func rateLimitStatusUnknown() async throws {
         let result = try await call("asc_rate_limit_status", [:], [jsonCanned(["data": []])])
-        #expect(text(result).contains("\"known\" : false"))
+        #expect(text(result).contains("\"known\":false"))
     }
 
     // MARK: - Passthrough

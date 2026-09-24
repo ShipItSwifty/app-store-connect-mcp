@@ -2,27 +2,28 @@
 
 A reusable Swift client for the **App Store Connect API** — including the **Xcode Cloud**
 (`ci*`) resource family — plus an **MCP server** that lets an AI agent investigate *what
-broke in CI*.
+broke*: a red Xcode Cloud build, a rejected or stuck submission, a TestFlight build testers
+can't see, a hang regression in production.
 
-Two products, both public-facing:
+Three products:
 
 | Product | Platforms | Use it for |
 |---|---|---|
 | `AppStoreConnectKit` (library) | macOS, Linux | JWT auth, rate limiting, the generic REST client, App Store + TestFlight DTOs, and the typed Xcode Cloud read API (`ciProducts` → `ciWorkflows` → `ciBuildRuns` → `ciBuildActions` → `ciIssues` / `ciTestResults` / `ciArtifacts`). |
 | `AppStoreConnectUploadKit` (library) | macOS only | `IPAUploadService` — orchestrates `xcrun altool --upload-app` and resolves the resulting build id. |
-| `app-store-connect-mcp` (executable) | macOS, Linux | An MCP (Model Context Protocol) server exposing the Xcode Cloud read API as tools. |
+| `app-store-connect-mcp` (executable) | macOS, Linux | An MCP (Model Context Protocol) server exposing the App Store Connect read API as tools, plus investigation prompts. |
 
 > `AppStoreConnectKit` is consumed by [ShipItSwifty](https://github.com/maniramezan/ShipItSwifty)
 > as its App Store Connect layer.
 
-📖 **[API documentation](https://maniramezan.github.io/app-store-connect-mcp/)** (DocC, published from `main`).
+📖 **[API documentation](https://shipitswifty.github.io/app-store-connect-mcp/)** (DocC, published from `main`).
 
 ## Install (library)
 
 **Requires Swift 6.3+** (macOS 15+ / Linux).
 
 ```swift
-.package(url: "https://github.com/maniramezan/app-store-connect-mcp.git", from: "0.1.0"),
+.package(url: "https://github.com/ShipItSwifty/app-store-connect-mcp.git", from: "0.1.0"),
 ```
 
 ```swift
@@ -116,6 +117,35 @@ walk short and more resources exist.
 
 ## MCP server
 
+### Quick start
+
+```bash
+brew install ShipItSwifty/tap/app-store-connect-mcp
+export ASC_KEY_ID=… ASC_ISSUER_ID=… ASC_PRIVATE_KEY_PATH=/absolute/path/AuthKey_XXXX.p8
+scripts/install-mcp.sh        # from a checkout of this repo; registers every client it finds
+```
+
+Then ask your agent things like:
+
+- *"Why did the last Xcode Cloud build of com.example.app fail?"*
+- *"Version 2.3 was rejected — what do I need to fix?"*
+- *"External testers can't see build 418. Why?"*
+- *"Are hangs worse in the latest release?"*
+- *"Give me a release health check for com.example.app."*
+
+### What a host gets
+
+| MCP feature | What this server provides |
+|---|---|
+| **Tools** | 35 read-only `asc_*` tools (below), all advertised with `readOnlyHint: true`, plus 5 write tools only when writes are enabled. |
+| **Prompts** | Five investigation playbooks (below) — in Claude Code they appear as `/mcp__app-store-connect__<name>`. |
+| **Instructions** | A short guide sent in the `initialize` result: where to start, which tool collapses a multi-call walk into one, and the rate-limit budget. Hosts that support it put this in the model's context before the first call. |
+
+Tool results are compact JSON (sorted keys, no indentation) — the reader is a model, and
+whitespace on a nested failure report is tokens you pay for. One API client is shared for
+the life of the server process, so the signed JWT is reused and the rate-limit position
+carries across calls.
+
 ### Install
 
 **Homebrew** (macOS and Linux) — from the [ShipItSwifty tap](https://github.com/ShipItSwifty/homebrew-tap):
@@ -134,11 +164,18 @@ Otherwise build from source — see [Run it](#run-it).
 
 Set these environment variables (same names as `altool` / Fastlane):
 
-- `ASC_KEY_ID`
-- `ASC_ISSUER_ID`
-- `ASC_PRIVATE_KEY` (raw `.p8` PEM contents) **or** `ASC_PRIVATE_KEY_PATH` (path to the file)
-- `ASC_VENDOR_NUMBER` (optional) — default vendor number for `asc_sales_report`
-- `ASC_ENABLE_WRITES` (optional) — set to `1` to advertise the [write tools](#writes-opt-in); unset, the server is read-only
+| Variable | Required | Meaning |
+|---|---|---|
+| `ASC_KEY_ID` | yes | The API key id |
+| `ASC_ISSUER_ID` | yes | Your team's issuer id |
+| `ASC_PRIVATE_KEY_PATH` | one of these two | Absolute path to the `.p8` file |
+| `ASC_PRIVATE_KEY` | one of these two | The raw `.p8` PEM contents |
+| `ASC_VENDOR_NUMBER` | no | Default vendor number for `asc_sales_report` |
+| `ASC_ENABLE_WRITES` | no | `1` / `true` / `yes` advertises the [write tools](#writes-opt-in); anything else keeps the server read-only |
+
+Credentials are read on the first tool call, not at startup, so the server starts (and
+lists its tools) without them; a call made with them missing returns an error naming the
+variables.
 
 #### Key role and JWT audience
 
@@ -185,7 +222,7 @@ Set these environment variables (same names as `altool` / Fastlane):
 | `asc_list_beta_testers` | `beta_group_id`, `limit?` | testers in a group, with invite type and state |
 | `asc_list_beta_feedback` | `app_id?` / `bundle_id?`, `kind?` (`crash` \| `screenshot`), `build_id?`, `device_model?`, `os_version?`, `limit?` | TestFlight tester feedback newest first — crash submissions with device state, or screenshots with the tester's comment and image URLs |
 | `asc_list_customer_reviews` | `app_id?` / `bundle_id?`, `rating?`, `territory?`, `limit?` | App Store reviews newest first, filterable by star rating and storefront |
-| `asc_list_diagnostic_signatures` | `build_id?` / `app_id?` / `bundle_id?`, `diagnostic_type?`, `limit?` | crash, hang and disk-write signatures real devices reported against a build, with `weight` and a regression insight (falls back to the app's newest build) |
+| `asc_list_diagnostic_signatures` | `build_id?` / `app_id?` / `bundle_id?`, `diagnostic_type?` (`HANGS` \| `LAUNCHES` \| `DISK_WRITES`), `limit?` | hang, slow-launch and disk-write signatures real devices reported against a build (crashes come from TestFlight feedback, below), with `weight` and a regression insight (falls back to the app's newest build) |
 | `asc_get_diagnostic_logs` | `signature_id`, `limit?`, `max_frames?` | the call stacks behind a signature, **reduced to the frames Apple blames** — symbol, binary, file + line where symbolicated — with each report's app/OS version and device. `totalFrames` says how much was elided |
 | `asc_get_beta_crash_log` | `feedback_id` | the symbolicated crash log attached to a TestFlight crash submission; `{"available": false}` while Apple is still attaching it |
 | `asc_perf_power_metrics` | `app_id?` / `bundle_id?`, `metric_type?`, `platform?`, `device_type?`, `raw?` | launch time, hang rate, memory, disk, battery from real devices: Apple's flagged regressions plus the newest measurement per percentile, with unit and goal band. `raw` returns the unreduced payload |
@@ -204,6 +241,7 @@ costs one extra lookup). Every tool above is advertised with MCP's `readOnlyHint
 a host can auto-approve them instead of prompting once per lookup during an
 investigation.
 
+<a id="writes-opt-in"></a>
 **Writes (opt-in)**
 
 The tools above only read. The ones below change something in App Store Connect and
@@ -224,13 +262,40 @@ The server does no analysis of its own beyond normalization (`CIFailureReport`, 
 
 Each tool is one `ToolSpec` that carries both its JSON Schema and its handler, so the
 advertised catalog and the dispatcher cannot drift apart; adding a tool means adding
-one entry to `CITools.specs`.
+one spec to the relevant list (`CITools`, `AppStoreTools`, `DiagnosticsTools`,
+`ReviewTools`, `ReportingTools`, or `WriteTools`), which `CITools.specs` concatenates.
 
 **A note on "failed":** `failed_only` and `asc_ci_latest_failure` treat a *run* as
 failed when its `completionStatus` is `FAILED`, `ERRORED`, or `INVALID` — a run
 someone canceled by hand is not a red build. The failure reports additionally collect
 `CANCELED` *actions*, because Xcode Cloud cancels an action's siblings when one
 breaks and those still carry the issues that explain it.
+
+### Prompts
+
+Each prompt expands to a step-by-step plan naming the tools to call and how to read
+their output. They reference read-only tools only.
+
+| Prompt | Arguments | Walks through |
+|---|---|---|
+| `triage_ci_failure` | `bundle_id?` / `app_id?` / `build_run_id?` | latest failed Xcode Cloud run → parsed logs → root cause with file:line, timeout and signing checks |
+| `diagnose_review` | `bundle_id` | submission status → app-info / review-detail / metadata checks → next step |
+| `testflight_availability` | `bundle_id`, `version?` | build processing, export compliance, beta review, group setup — internal vs external |
+| `investigate_crashes` | `bundle_id`, `build_id?` | TestFlight crash logs, then hang / launch / disk-write signatures and their stacks |
+| `release_health` | `bundle_id` | versions, review, phased rollout, builds, signing expiry, recent reviews → one table |
+
+### Claude Code skill
+
+[`skills/app-store-connect/SKILL.md`](skills/app-store-connect/SKILL.md) is a richer
+version of the same playbooks for Claude Code, including what 401 / 403 mean and when
+to stop drilling. `scripts/install-mcp.sh` offers to install it; by hand:
+
+```bash
+mkdir -p ~/.claude/skills/app-store-connect
+cp skills/app-store-connect/SKILL.md ~/.claude/skills/app-store-connect/
+```
+
+Or copy it into a project's `.claude/skills/` to share it with the team.
 
 ### Run it
 
@@ -351,13 +416,31 @@ raw config):
 > Linuxbrew use `/usr/local/bin` and `/home/linuxbrew/.linuxbrew/bin` respectively —
 > confirm with `which app-store-connect-mcp`.
 
+### Troubleshooting
+
+| Symptom | Cause |
+|---|---|
+| `Missing App Store Connect credentials` | `ASC_KEY_ID` / `ASC_ISSUER_ID` / a key variable aren't set **in the client's config** — GUI apps don't inherit your shell environment. `ASC_PRIVATE_KEY_PATH` must be absolute and readable. |
+| `401` / `NOT_AUTHORIZED` | Key id and issuer id don't belong together, the key was revoked, or the `.p8` isn't the one for that key id. |
+| `403 FORBIDDEN` on `asc_ci_*` only | The key's role can't read Xcode Cloud. Use a Team key with Developer, App Manager, or Admin. |
+| `403` on `asc_sales_report` only | Sales reports need a key with Finance or Sales access (or Admin). |
+| Server doesn't start from a GUI client | `command` isn't an absolute path. Use the output of `which app-store-connect-mcp`. |
+| Write tool answers "set ASC_ENABLE_WRITES" | Working as intended — writes are opt-in. |
+| Calls slow down and a ⚠️ rate-limit block appears | The key is near Apple's hourly limit; requests pause at 90%. Narrow the investigation or wait. |
+
+Check the binary by hand: `app-store-connect-mcp --version`, or pipe an `initialize` +
+`tools/list` handshake into it as CI's smoke test does (`.github/workflows/ci.yml`).
+
 ## Development
 
 ```bash
 swift build
 swift test --enable-code-coverage --no-parallel
-swift-format lint -r -s --configuration .swift-format Sources Tests
+MIN_LINE_COVERAGE=85 scripts/coverage-gate.sh
+xcrun swift-format lint --recursive --strict --configuration .swift-format Sources Tests
 ```
+
+CI runs all four on macOS plus a Linux build and test (`swift:6.3-noble`).
 
 Build the documentation locally:
 
