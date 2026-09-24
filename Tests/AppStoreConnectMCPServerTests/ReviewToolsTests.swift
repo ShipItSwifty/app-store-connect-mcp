@@ -51,7 +51,7 @@ struct ReviewToolsTests {
         )
         let payload = text(result)
         #expect(payload.contains("ACTIVE"))
-        #expect(payload.contains("\"percentageOfUsers\":20"))
+        #expect(payload.contains("\"percentageOfUsers\" : 20"))
     }
 
     @Test("asc_phased_release_status reports 'not configured' for an immediate release")
@@ -61,7 +61,7 @@ struct ReviewToolsTests {
             ["version_id": .string("v1")],
             [jsonCanned(["errors": [["detail": "not found"]]], statusCode: 404)]
         )
-        #expect(text(result).contains("\"configured\":false"))
+        #expect(text(result).contains("\"configured\" : false"))
         #expect(result.isError != true)
     }
 

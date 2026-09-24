@@ -56,7 +56,8 @@ enum DiagnosticsTools {
                 .string("signature_id", "Diagnostic signature id (from asc_list_diagnostic_signatures).", required: true),
                 .integer("limit", "Max device reports to fetch (default 10)."),
                 .integer("max_frames", "Max frames kept per report (default 25)."),
-            ]
+            ],
+            outputSchema: CITools.diagnosticLogSummaryOutputSchema
         ) { args, makeClient in
             try json(
                 await makeClient().diagnosticLogSummary(
@@ -100,7 +101,8 @@ enum DiagnosticsTools {
                 .string("platform", "IOS, MAC_OS, TV_OS, or WATCH_OS."),
                 .string("device_type", "Device filter, e.g. all_iPhones."),
                 .boolean("raw", "Return Apple's full unreduced payload instead of the summary."),
-            ]
+            ],
+            outputSchema: CITools.perfPowerMetricsOutputSchema
         ) { args, makeClient in
             let client = try makeClient()
             let appID = try await AppStoreTools.resolveAppID(args, client: client)

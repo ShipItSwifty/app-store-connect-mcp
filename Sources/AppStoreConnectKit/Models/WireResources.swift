@@ -72,25 +72,3 @@ struct BuildResource: Codable, Sendable {
         let buildAudienceType: String?
     }
 }
-
-// MARK: - Shared lookups
-
-extension AppStoreConnectClient {
-    /// Resolves the App Store Connect app for a bundle identifier.
-    ///
-    /// - Throws: ``ASCError/apiError(statusCode:body:)`` with status 404 when no app
-    ///   in the team matches `bundleID`.
-    func app(bundleID: String) async throws -> ASCApp {
-        let apps: ASCListResponse<ASCApp> = try await get(
-            "/v1/apps",
-            query: ["filter[bundleId]": bundleID]
-        )
-        guard let app = apps.data.first else {
-            throw ASCError.apiError(
-                statusCode: 404,
-                body: "App with bundle ID '\(bundleID)' not found in App Store Connect"
-            )
-        }
-        return app
-    }
-}

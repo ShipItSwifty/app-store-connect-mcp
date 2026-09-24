@@ -50,6 +50,7 @@ public actor AppStoreConnectClient {
     private let retryPolicy: TransientRetryPolicy
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
+    private var appsByBundleID: [String: ASCApp] = [:]
     private let logger = Logger.forType(subsystem: "AppStoreConnectKit", AppStoreConnectClient.self)
 
     /// The JWT token generator used for authentication.
@@ -224,6 +225,26 @@ public actor AppStoreConnectClient {
     public func getRaw(_ path: String, query: [String: String] = [:]) async throws -> Data {
         let request = try await buildRequest(method: "GET", path: path, query: query, body: nil as EmptyBody?)
         return try await performData(request).data
+    }
+
+    /// Resolves and caches the App Store Connect app for a bundle identifier.
+    public func app(bundleID: String) async throws -> ASCApp {
+        if let cached = appsByBundleID[bundleID] {
+            return cached
+        }
+
+        let apps: ASCListResponse<ASCApp> = try await get(
+            "/v1/apps",
+            query: ["filter[bundleId]": bundleID]
+        )
+        guard let app = apps.data.first else {
+            throw ASCError.apiError(
+                statusCode: 404,
+                body: "App with bundle ID '\(bundleID)' not found in App Store Connect"
+            )
+        }
+        appsByBundleID[bundleID] = app
+        return app
     }
 
     // MARK: - Asset Upload

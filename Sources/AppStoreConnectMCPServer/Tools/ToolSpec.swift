@@ -98,6 +98,7 @@ struct ToolSpec: Sendable {
     /// what lets a client auto-approve a call instead of prompting for every lookup —
     /// worth carrying, since an investigation is dozens of calls deep.
     let isReadOnly: Bool
+    let outputSchema: Value?
     let handler: Handler
 
     init(
@@ -105,12 +106,14 @@ struct ToolSpec: Sendable {
         description: String,
         arguments: [ToolArgument] = [],
         isReadOnly: Bool = true,
+        outputSchema: Value? = nil,
         handler: @escaping Handler
     ) {
         self.name = name
         self.description = description
         self.arguments = arguments
         self.isReadOnly = isReadOnly
+        self.outputSchema = outputSchema
         self.handler = handler
     }
 
@@ -143,7 +146,8 @@ struct ToolSpec: Sendable {
                 idempotentHint: isReadOnly,
                 // Every tool talks to Apple's servers, whose state this server does not own.
                 openWorldHint: true
-            )
+            ),
+            outputSchema: outputSchema
         )
     }
 }

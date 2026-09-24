@@ -148,7 +148,8 @@ enum CITools {
             arguments: [
                 .string("build_run_id", "Xcode Cloud build run id.", required: true),
                 .string("workflow_name", "Optional workflow name to embed for context."),
-            ]
+            ],
+            outputSchema: reportOutputSchema
         ) { args, makeClient in
             try json(
                 await makeClient().ciFailureReport(
@@ -168,7 +169,8 @@ enum CITools {
             arguments: [
                 .string("build_run_id", "Xcode Cloud build run id.", required: true),
                 .string("workflow_name", "Optional workflow name to embed for context."),
-            ]
+            ],
+            outputSchema: failureReportWithLogsOutputSchema
         ) { args, makeClient in
             try json(
                 await makeClient().ciFailureReportWithLogs(
@@ -196,7 +198,8 @@ enum CITools {
                     "app_id",
                     "App Store Connect app id — scan every workflow of every Xcode Cloud product of this app."
                 ),
-            ]
+            ],
+            outputSchema: latestFailureOutputSchema
         ) { args, makeClient in
             try json(
                 await makeClient().ciLatestFailureReport(
@@ -236,7 +239,8 @@ enum CITools {
                 """,
             arguments: [
                 .string("bundle_id", "The app's bundle identifier (e.g. com.example.app).", required: true)
-            ]
+            ],
+            outputSchema: submissionStatusOutputSchema
         ) { args, makeClient in
             let service = AppStoreSubmissionService(client: try makeClient())
             return try json(await service.status(bundleID: args.require("bundle_id")))
@@ -286,7 +290,12 @@ enum CITools {
             + "(\(status.remaining)/\(status.limit) requests left this hour). "
             + "Requests pause automatically at \(Int((status.throttleThreshold * 100).rounded()))% — "
             + "consider narrowing further calls."
-        return .init(content: result.content + [.plainText(hint)], isError: result.isError)
+        return .init(
+            content: result.content + [.plainText(hint)],
+            structuredContent: result.structuredContent,
+            isError: result.isError,
+            _meta: result._meta
+        )
     }
 
     /// Looks a tool up by name and runs its handler.
@@ -361,14 +370,383 @@ enum CITools {
     }
 
     /// Encodes a tool's payload as one text block.
-    ///
-    /// Compact rather than pretty-printed: the reader is a model, and indentation on
-    /// a nested failure report or a page of builds is a third or more of the bytes —
-    /// tokens the host pays for on every call. Keys stay sorted so output is stable.
     static func json<T: Encodable>(_ value: T) throws -> CallTool.Result {
         let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         let data = try encoder.encode(value)
-        return .init(content: [.plainText(String(decoding: data, as: UTF8.self))], isError: false)
+        let structuredContent = try JSONDecoder().decode(Value.self, from: data)
+        return try CallTool.Result(
+            content: [.plainText(String(decoding: data, as: UTF8.self))],
+            structuredContent: structuredContent,
+            isError: false
+        )
+    }
+
+    // MARK: - Output schemas
+
+    /// `CIFailureReport`.
+    static let reportOutputSchema = objectSchema(
+        properties: [
+            "buildRunID": nullable("string"),
+            "workflowName": nullable("string"),
+            "number": nullable("integer"),
+            "completionStatus": nullable("string"),
+            "sourceCommitSha": nullable("string"),
+            "sourceCommitMessage": nullable("string"),
+            "startedDate": nullable("string"),
+            "finishedDate": nullable("string"),
+            "durationSeconds": nullable("number"),
+            "failedActions": arraySchema(of: failureActionSchema),
+        ],
+        required: ["buildRunID", "failedActions"]
+    )
+
+    /// `CIFailureReportWithLogs`.
+    static let failureReportWithLogsOutputSchema = objectSchema(
+        properties: [
+            "report": reportOutputSchema,
+            "logFindingsByAction": objectSchema(
+                properties: [:],
+                additionalProperties: logAnalysisSchema
+            ),
+            "skippedArtifacts": arraySchema(of: .string("string")),
+        ],
+        required: ["report", "logFindingsByAction", "skippedArtifacts"]
+    )
+
+    /// `CILatestFailure`.
+    static let latestFailureOutputSchema = objectSchema(
+        properties: [
+            "found": .string("boolean"),
+            "workflowsScanned": .string("integer"),
+            "workflowID": nullable("string"),
+            "workflowName": nullable("string"),
+            "buildRunID": nullable("string"),
+            "report": nullableObject(reportOutputSchema),
+        ],
+        required: ["found", "workflowsScanned"]
+    )
+
+    /// `ReportingTools.AnalyticsCatalog`.
+    static let analyticsCatalogOutputSchema = objectSchema(
+        properties: [
+            "appID": .string("string"),
+            "requests": arraySchema(of: analyticsRequestSchema),
+        ],
+        required: ["appID", "requests"]
+    )
+
+    /// `ReportingTools.AnalyticsReportPayload`.
+    static let analyticsReportOutputSchema = objectSchema(
+        properties: [
+            "found": .string("boolean"),
+            "report": nullableObject(
+                objectSchema(
+                    properties: [
+                        "reportName": nullable("string"),
+                        "category": nullable("string"),
+                        "granularity": nullable("string"),
+                        "processingDate": nullable("string"),
+                        "table": reportTableSchema,
+                    ],
+                    required: ["table"]
+                )
+            ),
+        ],
+        required: ["found"]
+    )
+
+    /// `ReportingTools.SalesReportPayload`.
+    static let salesReportOutputSchema = objectSchema(
+        properties: [
+            "found": .string("boolean"),
+            "table": nullableObject(reportTableSchema),
+        ],
+        required: ["found"]
+    )
+
+    /// `AppStoreTools.RateLimitReport`.
+    static let rateLimitOutputSchema = objectSchema(
+        properties: [
+            "known": .string("boolean"),
+            "status": nullableObject(
+                objectSchema(
+                    properties: [
+                        "limit": .string("integer"),
+                        "remaining": .string("integer"),
+                        "usedFraction": .string("number"),
+                        "throttleThreshold": .string("number"),
+                    ],
+                    required: ["limit", "remaining", "usedFraction", "throttleThreshold"]
+                )
+            ),
+        ],
+        required: ["known"]
+    )
+
+    /// `AppStoreSubmissionService.SubmissionStatusReport`.
+    static let submissionStatusOutputSchema = objectSchema(
+        properties: [
+            "appID": .string("string"),
+            "bundleID": .string("string"),
+            "latestVersion": nullableObject(submissionVersionSchema),
+            "reviewSubmission": nullableObject(reviewSubmissionSchema),
+            "items": arraySchema(of: reviewSubmissionItemSchema),
+            "needsDeveloperAction": .string("boolean"),
+            "diagnosis": .string("string"),
+            "buildAttached": nullable("boolean"),
+            "attachedBuild": nullableObject(submissionBuildSchema),
+            "candidateBuild": nullableObject(submissionBuildSchema),
+        ],
+        required: ["appID", "bundleID", "items", "needsDeveloperAction", "diagnosis"]
+    )
+
+    /// `DiagnosticLogSummary`.
+    static let diagnosticLogSummaryOutputSchema = objectSchema(
+        properties: [
+            "signatureID": nullable("string"),
+            "reports": arraySchema(of: diagnosticReportSchema),
+        ],
+        required: ["reports"]
+    )
+
+    /// `PerfPowerMetricsSummary`, plus the raw fields returned when `raw` is true.
+    static let perfPowerMetricsOutputSchema = objectSchema(
+        properties: [
+            "regressions": arraySchema(of: metricsRegressionSchema),
+            "metrics": arraySchema(of: metricsPointSchema),
+            "version": nullable("string"),
+            "insights": nullableObject(objectSchema(properties: [:], additionalProperties: true)),
+            "productData": arraySchema(of: objectSchema(properties: [:], additionalProperties: true)),
+        ],
+        additionalProperties: false
+    )
+
+    /// `AppStoreTools.TestFlightBuildStatus`.
+    static let testFlightBuildStatusOutputSchema = objectSchema(
+        properties: [
+            "found": .string("boolean"),
+            "build": nullableObject(objectSchema(properties: [:], additionalProperties: true)),
+            "betaDetail": nullableObject(objectSchema(properties: [:], additionalProperties: true)),
+            "whatToTest": arraySchema(of: objectSchema(properties: [:], additionalProperties: true)),
+        ],
+        required: ["found", "whatToTest"]
+    )
+
+    private static let failureActionSchema = objectSchema(
+        properties: [
+            "id": .string("string"),
+            "name": nullable("string"),
+            "actionType": nullable("string"),
+            "completionStatus": nullable("string"),
+            "startedDate": nullable("string"),
+            "finishedDate": nullable("string"),
+            "durationSeconds": nullable("number"),
+            "issues": arraySchema(of: objectSchema(
+                properties: [
+                    "type": nullable("string"),
+                    "message": nullable("string"),
+                    "path": nullable("string"),
+                    "line": nullable("integer"),
+                ]
+            )),
+            "failedTests": arraySchema(of: objectSchema(
+                properties: [
+                    "className": nullable("string"),
+                    "name": nullable("string"),
+                    "status": nullable("string"),
+                    "message": nullable("string"),
+                ]
+            )),
+            "artifacts": arraySchema(of: objectSchema(
+                properties: [
+                    "fileType": nullable("string"),
+                    "fileName": nullable("string"),
+                    "downloadUrl": nullable("string"),
+                ]
+            )),
+        ],
+        required: ["id", "issues", "failedTests", "artifacts"]
+    )
+
+    private static let logAnalysisSchema = objectSchema(
+        properties: [
+            "findings": arraySchema(of: objectSchema(
+                properties: [
+                    "kind": .string("string"),
+                    "message": .string("string"),
+                    "path": nullable("string"),
+                    "line": nullable("integer"),
+                    "rawLine": .string("string"),
+                ],
+                required: ["kind", "message", "rawLine"]
+            )),
+            "linesScanned": .string("integer"),
+        ],
+        required: ["findings", "linesScanned"]
+    )
+
+    private static let analyticsRequestSchema = objectSchema(
+        properties: [
+            "request": objectSchema(
+                properties: [
+                    "id": .string("string"),
+                    "attributes": nullableObject(objectSchema(
+                        properties: [
+                            "accessType": nullable("string"),
+                            "stoppedDueToInactivity": nullable("boolean"),
+                        ]
+                    )),
+                ],
+                required: ["id"]
+            ),
+            "reports": arraySchema(of: objectSchema(
+                properties: [
+                    "id": .string("string"),
+                    "attributes": nullableObject(objectSchema(
+                        properties: [
+                            "name": nullable("string"),
+                            "category": nullable("string"),
+                        ]
+                    )),
+                ],
+                required: ["id"]
+            )),
+        ],
+        required: ["request", "reports"]
+    )
+
+    private static let reportTableSchema = objectSchema(
+        properties: [
+            "columns": arraySchema(of: .string("string")),
+            "rows": arraySchema(of: arraySchema(of: .string("string"))),
+            "totalRows": .string("integer"),
+            "truncated": .string("boolean"),
+        ],
+        required: ["columns", "rows", "totalRows", "truncated"]
+    )
+
+    private static let submissionBuildSchema = objectSchema(
+        properties: [
+            "id": .string("string"),
+            "version": nullable("string"),
+            "processingState": nullable("string"),
+            "expired": nullable("boolean"),
+            "buildAudienceType": nullable("string"),
+            "audienceNote": nullable("string"),
+        ],
+        required: ["id"]
+    )
+
+    private static let submissionVersionSchema = objectSchema(
+        properties: [
+            "id": .string("string"),
+            "versionString": nullable("string"),
+            "platform": nullable("string"),
+            "state": nullable("string"),
+            "createdDate": nullable("string"),
+        ],
+        required: ["id"]
+    )
+
+    private static let reviewSubmissionSchema = objectSchema(
+        properties: [
+            "id": .string("string"),
+            "state": nullable("string"),
+            "platform": nullable("string"),
+            "submittedDate": nullable("string"),
+        ],
+        required: ["id"]
+    )
+
+    private static let reviewSubmissionItemSchema = objectSchema(
+        properties: [
+            "id": .string("string"),
+            "state": nullable("string"),
+        ],
+        required: ["id"]
+    )
+
+    private static let diagnosticReportSchema = objectSchema(
+        properties: [
+            "appVersion": nullable("string"),
+            "buildVersion": nullable("string"),
+            "osVersion": nullable("string"),
+            "deviceType": nullable("string"),
+            "event": nullable("string"),
+            "eventDetail": nullable("string"),
+            "writesCaused": nullable("string"),
+            "blameFrames": arraySchema(of: objectSchema(
+                properties: [
+                    "symbolName": nullable("string"),
+                    "binaryName": nullable("string"),
+                    "fileName": nullable("string"),
+                    "lineNumber": nullable("string"),
+                    "sampleCount": nullable("integer"),
+                    "depth": .string("integer"),
+                ],
+                required: ["depth"]
+            )),
+            "totalFrames": .string("integer"),
+        ],
+        required: ["blameFrames", "totalFrames"]
+    )
+
+    private static let metricsRegressionSchema = objectSchema(
+        properties: [
+            "metric": nullable("string"),
+            "category": nullable("string"),
+            "summary": nullable("string"),
+            "highImpact": nullable("boolean"),
+            "latestVersion": nullable("string"),
+            "worstDeltaPercentage": nullable("number"),
+        ]
+    )
+
+    private static let metricsPointSchema = objectSchema(
+        properties: [
+            "category": nullable("string"),
+            "metric": nullable("string"),
+            "platform": nullable("string"),
+            "device": nullable("string"),
+            "percentile": nullable("string"),
+            "version": nullable("string"),
+            "value": nullable("number"),
+            "unit": nullable("string"),
+            "goal": nullable("string"),
+        ]
+    )
+
+    private static func objectSchema(
+        properties: [String: Value],
+        required: [String] = [],
+        additionalProperties: Value = .bool(false)
+    ) -> Value {
+        var schema: [String: Value] = [
+            "type": .string("object"),
+            "properties": .object(properties),
+            "additionalProperties": additionalProperties,
+        ]
+        if !required.isEmpty {
+            schema["required"] = .array(required.map { .string($0) })
+        }
+        return .object(schema)
+    }
+
+    private static func arraySchema(of items: Value) -> Value {
+        .object(["type": .string("array"), "items": items])
+    }
+
+    private static func nullable(_ type: String) -> Value {
+        .array([.string(type), .string("null")])
+    }
+
+    private static func nullableObject(_ schema: Value) -> Value {
+        .object([
+            "anyOf": .array([
+                schema,
+                .object(["type": .string("null")]),
+            ])
+        ])
     }
 }

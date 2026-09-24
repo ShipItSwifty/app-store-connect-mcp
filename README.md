@@ -73,7 +73,7 @@ the latest `appStoreVersions` record for the bundle id first.
 ```swift
 let service = AppStoreReleaseService(client: client)
 
-// Pull every locale's metadata into <dir>/<locale>/{name,subtitle,description,keywords,release_notes}.txt
+// Pull every locale's metadata into <dir>/<locale>/{name,subtitle,description,keywords,release_notes,promotional_text}.txt
 try await service.pullMetadata(bundleID: "com.example.app", directory: "./metadata")
 
 // Push those files back up (upserts appInfoLocalizations + appStoreVersionLocalizations).
@@ -137,11 +137,13 @@ Then ask your agent things like:
 
 | MCP feature | What this server provides |
 |---|---|
-| **Tools** | 35 read-only `asc_*` tools (below), all advertised with `readOnlyHint: true`, plus 5 write tools only when writes are enabled. |
+| **Tools** | 35 read-only `asc_*` tools (below), all advertised with `readOnlyHint: true`, plus 7 write tools only when writes are enabled. |
 | **Prompts** | Five investigation playbooks (below) — in Claude Code they appear as `/mcp__app-store-connect__<name>`. |
+| **Resources** | The template `asc://apps/{bundle_id}/latest-failure`, which reads the latest failed Xcode Cloud report for an app as `application/json`. |
 | **Instructions** | A short guide sent in the `initialize` result: where to start, which tool collapses a multi-call walk into one, and the rate-limit budget. Hosts that support it put this in the model's context before the first call. |
 
-Tool results are compact JSON (sorted keys, no indentation) — the reader is a model, and
+Tool results are compact JSON (sorted keys, no indentation) and JSON responses also carry
+MCP `structuredContent` for hosts that consume typed results — the reader is a model, and
 whitespace on a nested failure report is tokens you pay for. One API client is shared for
 the life of the server process, so the signed JWT is reused and the rate-limit position
 carries across calls.
@@ -255,6 +257,8 @@ naming the variable rather than "unknown tool".
 | `asc_ci_start_build` | `workflow_id`, `git_reference_id?`, `clean?` | starts a real Xcode Cloud build (consumes compute minutes) |
 | `asc_ci_rerun_build` | `build_run_id`, `clean?` | re-runs a build run, reusing its workflow **and git reference**, so the retry builds the same commit |
 | `asc_update_whats_new` | `bundle_id`, `locale`, `text` | sets the release notes for one locale on the latest version; fails once that version is in review |
+| `asc_update_version_localization` | `bundle_id`, `locale`, `description?`, `keywords?`, `promotional_text?` | updates description/keywords/promotional text for one locale on the latest version — only the fields passed are changed. `description`/`keywords` lock once the version is in review; `promotional_text` stays editable on a `READY_FOR_SALE` version |
+| `asc_update_app_info_localization` | `bundle_id`, `locale`, `name?`, `subtitle?` | updates the app name/subtitle for one locale at the app-info level — app-wide, not version-scoped, so it isn't blocked by review state |
 | `asc_submit_for_review` | `bundle_id`, `version_string?`, `automatic_release?`, `phased_release?` | **submits the app to App Review** — irreversible and public |
 | `asc_create_analytics_report_request` | `app_id?` / `bundle_id?`, `access_type?` | creates the analytics report request that makes `asc_get_analytics_report` return anything |
 

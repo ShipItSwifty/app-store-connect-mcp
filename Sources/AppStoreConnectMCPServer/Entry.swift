@@ -39,6 +39,7 @@ struct AppStoreConnectMCP {
             instructions: ServerInstructions.text,
             capabilities: .init(
                 prompts: .init(listChanged: false),
+                resources: .init(subscribe: false, listChanged: false),
                 tools: .init(listChanged: false)
             )
         )
@@ -63,6 +64,18 @@ struct AppStoreConnectMCP {
             } catch {
                 return .init(content: [.plainText("Error: \(error.localizedDescription)")], isError: true)
             }
+        }
+
+        await server.withMethodHandler(ListResources.self) { _ in
+            .init(resources: [])
+        }
+
+        await server.withMethodHandler(ListResourceTemplates.self) { _ in
+            .init(templates: MCPResources.templates)
+        }
+
+        await server.withMethodHandler(ReadResource.self) { params in
+            try await MCPResources.read(uri: params.uri, makeClient: CITools.defaultClient)
         }
 
         let transport = StdioTransport(logger: log)

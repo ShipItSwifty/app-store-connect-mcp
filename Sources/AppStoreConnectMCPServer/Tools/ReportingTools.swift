@@ -32,7 +32,8 @@ enum ReportingTools {
                 .string("bundle_id", "Bundle identifier, resolved to an app id."),
                 .string("category", "Filter reports by category."),
                 .integer("limit", "Max reports to return per request (default 200)."),
-            ]
+            ],
+            outputSchema: CITools.analyticsCatalogOutputSchema
         ) { args, makeClient in
             let client = try makeClient()
             let appID = try await AppStoreTools.resolveAppID(args, client: client)
@@ -69,7 +70,8 @@ enum ReportingTools {
                 .string("granularity", "DAILY (default), WEEKLY, or MONTHLY."),
                 .string("processing_date", "A specific YYYY-MM-DD. Defaults to the newest available."),
                 .integer("max_rows", "Max data rows to return (default 100)."),
-            ]
+            ],
+            outputSchema: CITools.analyticsReportOutputSchema
         ) { args, makeClient in
             let client = try makeClient()
             let appID = try await AppStoreTools.resolveAppID(args, client: client)
@@ -105,7 +107,8 @@ enum ReportingTools {
                 .string("report_sub_type", "SUMMARY (default), DETAILED, or OPT_IN."),
                 .string("version", "Report version, e.g. 1_0 for SALES or 1_3 for SUBSCRIPTION."),
                 .integer("max_rows", "Max data rows to return (default 100)."),
-            ]
+            ],
+            outputSchema: CITools.salesReportOutputSchema
         ) { args, makeClient in
             guard let vendorNumber = args.string("vendor_number") ?? environmentVendorNumber() else {
                 throw ASCError.invalidConfiguration(

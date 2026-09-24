@@ -122,7 +122,8 @@ enum AppStoreTools {
                 .string("app_id", "App Store Connect app id (or pass bundle_id)."),
                 .string("bundle_id", "Bundle identifier, resolved to an app id."),
                 .string("version", "Build number to inspect. Defaults to the newest build."),
-            ]
+            ],
+            outputSchema: CITools.testFlightBuildStatusOutputSchema
         ) { args, makeClient in
             let client = try makeClient()
             let appID = try await resolveAppID(args, client: client)
@@ -251,14 +252,12 @@ enum AppStoreTools {
             description: """
                 Report this key's current App Store Connect hourly rate-limit position: the \
                 limit, requests remaining, percentage used, and the threshold at which this \
-                server starts pausing requests. Costs one cheap request. Check it before a \
-                broad scan. Returns {"known": false} until a first response has been seen.
-                """
+                server starts pausing requests. This is a local snapshot and makes no API \
+                request. Returns {"known": false} until a first response has been seen.
+                """,
+            outputSchema: CITools.rateLimitOutputSchema
         ) { _, makeClient in
             let client = try makeClient()
-            // The limit is only known from a response header, so make the cheapest call
-            // there is (a single-app page) purely to learn the current position.
-            _ = try? await client.apps(limit: 1)
             guard let status = await client.rateLimiter.status() else {
                 return try json(RateLimitReport(known: false, status: nil))
             }
@@ -291,7 +290,12 @@ enum AppStoreTools {
             let (path, inlineQuery) = try parseAPIPath(args.require("path"))
             let query = try inlineQuery.merging(parseQueryObject(args.string("query"))) { _, explicit in explicit }
             let data = try await makeClient().getRaw(path, query: query)
-            return .init(content: [.plainText(String(decoding: data, as: UTF8.self))], isError: false)
+            let structuredContent = try? JSONDecoder().decode(Value.self, from: data)
+            return .init(
+                content: [.plainText(String(decoding: data, as: UTF8.self))],
+                structuredContent: structuredContent,
+                isError: false
+            )
         },
     ]
 
@@ -322,14 +326,7 @@ enum AppStoreTools {
         guard let bundleID = args.string("bundle_id") else {
             throw ASCError.invalidConfiguration(reason: "Pass either 'app_id' or 'bundle_id'.")
         }
-        let apps = try await client.apps(bundleID: bundleID, limit: 1)
-        guard let app = apps.data.first else {
-            throw ASCError.apiError(
-                statusCode: 404,
-                body: "No app with bundle id '\(bundleID)' is visible to this API key."
-            )
-        }
-        return app.id
+        return try await client.app(bundleID: bundleID).id
     }
 
     /// Splits a caller-supplied path into a path and its inline query, rejecting
