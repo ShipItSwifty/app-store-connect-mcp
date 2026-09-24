@@ -208,6 +208,7 @@ struct CIToolsTests {
         }
         #expect(result.isError == false)
         #expect(text(result).contains("nope"))
+        #expect(schemaViolations(result, tool: "asc_ci_failure_report") == [])
     }
 
     @Test("asc_ci_latest_failure resolves a workflow, picks the newest red run, and reports it")
@@ -249,6 +250,7 @@ struct CIToolsTests {
         #expect(payload.contains("\"found\" : true"))
         #expect(payload.contains("run-9"))
         #expect(payload.contains("latest boom"))
+        #expect(schemaViolations(result, tool: "asc_ci_latest_failure") == [])
     }
 
     @Test("asc_ci_latest_failure returns found:false when the scope has no red runs")
@@ -266,6 +268,7 @@ struct CIToolsTests {
 
         #expect(result.isError == false)
         #expect(text(result).contains("\"found\" : false"))
+        #expect(schemaViolations(result, tool: "asc_ci_latest_failure") == [])
     }
 
     @Test("asc_ci_latest_failure without a scope throws ASCError.invalidConfiguration")
@@ -387,5 +390,6 @@ struct CIToolsTests {
         #expect(text(result).contains("METADATA_REJECTED"))
         #expect(text(result).lowercased().contains("metadata"))
         #expect(text(result).contains("\"buildAttached\" : true") || text(result).contains("\"buildAttached\":true"))
+        #expect(schemaViolations(result, tool: "asc_submission_status") == [])
     }
 }
