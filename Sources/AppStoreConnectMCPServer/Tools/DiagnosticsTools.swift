@@ -2,7 +2,7 @@ import AppStoreConnectKit
 import Foundation
 import MCP
 
-/// Tools for what real devices report, as opposed to what CI reports: crash, hang and
+/// Tools for what real devices report, as opposed to what CI reports: hang, launch and
 /// disk-write signatures with their call stacks, TestFlight crash logs, and the Xcode
 /// Organizer power-and-performance metrics.
 ///
@@ -17,7 +17,7 @@ enum DiagnosticsTools {
         ToolSpec(
             name: "asc_list_diagnostic_signatures",
             description: """
-                List the crash, hang, and excessive-disk-write signatures real devices \
+                List the hang, slow-launch, and excessive-disk-write signatures real devices \
                 reported against a build — the data behind Xcode's Organizer. Each signature \
                 is one class of problem rolled up across every device that hit it, with a \
                 'weight' (how many reports) and an insight saying whether it is worse than \
@@ -56,7 +56,8 @@ enum DiagnosticsTools {
                 .string("signature_id", "Diagnostic signature id (from asc_list_diagnostic_signatures).", required: true),
                 .integer("limit", "Max device reports to fetch (default 10)."),
                 .integer("max_frames", "Max frames kept per report (default 25)."),
-            ]
+            ],
+            outputSchema: CITools.diagnosticLogSummaryOutputSchema
         ) { args, makeClient in
             try json(
                 await makeClient().diagnosticLogSummary(
@@ -100,7 +101,8 @@ enum DiagnosticsTools {
                 .string("platform", "IOS, MAC_OS, TV_OS, or WATCH_OS."),
                 .string("device_type", "Device filter, e.g. all_iPhones."),
                 .boolean("raw", "Return Apple's full unreduced payload instead of the summary."),
-            ]
+            ],
+            outputSchema: CITools.perfPowerMetricsOutputSchema
         ) { args, makeClient in
             let client = try makeClient()
             let appID = try await AppStoreTools.resolveAppID(args, client: client)

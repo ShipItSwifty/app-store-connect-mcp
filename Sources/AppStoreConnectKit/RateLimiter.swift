@@ -52,6 +52,9 @@ public actor RateLimiter {
 
     private var hourlyLimit: Int?
     private var hourlyRemaining: Int?
+    /// When a complete `X-Rate-Limit` header was last parsed. Package-internal so
+    /// tests can age it without sleeping.
+    private(set) var lastUpdated: ContinuousClock.Instant?
     private let logger = Logger.forType(subsystem: "AppStoreConnectKit", RateLimiter.self)
 
     /// Creates a `RateLimiter`.
@@ -91,7 +94,11 @@ public actor RateLimiter {
         guard let header = headers["X-Rate-Limit"] ?? headers["x-rate-limit"] else {
             return
         }
-        parse(header: header)
+        guard let parsed = parse(header: header) else { return }
+        hourlyLimit = parsed.limit
+        hourlyRemaining = parsed.remaining
+        lastUpdated = .now
+        logger.debug("Rate limit updated: \(parsed.remaining)/\(parsed.limit) remaining this hour")
     }
 
     /// The most recently parsed `(limit, remaining)` pair, or `nil` before any
@@ -122,10 +129,27 @@ public actor RateLimiter {
         )
     }
 
+    /// The current position, but only if a response reported it within `maxAge`.
+    ///
+    /// Lets a caller that wants the position skip a request made purely to learn it
+    /// when another call has just seen the header. Returns `nil` when nothing recent
+    /// is known.
+    public func status(maxAge: Duration) -> RateLimitStatus? {
+        status(maxAge: maxAge, now: .now)
+    }
+
+    /// ``status(maxAge:)`` against an explicit clock reading, for tests.
+    func status(maxAge: Duration, now: ContinuousClock.Instant) -> RateLimitStatus? {
+        guard let lastUpdated, lastUpdated.duration(to: now) <= maxAge else { return nil }
+        return status()
+    }
+
     // MARK: - Private
 
-    private func parse(header: String) {
+    private func parse(header: String) -> (limit: Int, remaining: Int)? {
         // Format: "user-hour-lim:3500;user-hour-rem:2998"
+        var limit: Int?
+        var remaining: Int?
         let parts = header.components(separatedBy: ";")
         for part in parts {
             let kv = part.components(separatedBy: ":")
@@ -133,13 +157,12 @@ public actor RateLimiter {
             let key = kv[0].trimmingCharacters(in: .whitespaces)
             let value = kv[1].trimmingCharacters(in: .whitespaces)
             if key == "user-hour-lim", let intValue = Int(value) {
-                hourlyLimit = intValue
+                limit = intValue
             } else if key == "user-hour-rem", let intValue = Int(value) {
-                hourlyRemaining = intValue
+                remaining = intValue
             }
         }
-        if let limit = hourlyLimit, let remaining = hourlyRemaining {
-            logger.debug("Rate limit updated: \(remaining)/\(limit) remaining this hour")
-        }
+        guard let limit, let remaining else { return nil }
+        return (limit, remaining)
     }
 }

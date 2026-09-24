@@ -82,6 +82,16 @@ struct CIToolsTests {
         }
     }
 
+    @Test("Report tools advertise output schemas")
+    func reportToolsHaveOutputSchemas() {
+        for name in [
+            "asc_ci_failure_report", "asc_ci_failure_report_with_logs", "asc_ci_latest_failure", "asc_get_analytics_report",
+            "asc_sales_report", "asc_get_diagnostic_logs", "asc_perf_power_metrics",
+        ] {
+            #expect(CITools.all.first(where: { $0.name == name })?.outputSchema != nil, "\(name) should expose outputSchema")
+        }
+    }
+
     @Test("Catalog includes the new diagnostics tools")
     func catalogHasNewTools() {
         let names = Set(CITools.all.map(\.name))
@@ -139,6 +149,7 @@ struct CIToolsTests {
         ) { client }
 
         #expect(result.isError == false)
+        #expect(result.structuredContent != nil)
         let payload = text(result)
         #expect(payload.contains("run-1"))
         #expect(payload.contains("SUCCEEDED"))
@@ -246,7 +257,7 @@ struct CIToolsTests {
 
         #expect(result.isError == false)
         let payload = text(result)
-        #expect(payload.contains("\"found\" : true"))
+        #expect(payload.contains("\"found\":true"))
         #expect(payload.contains("run-9"))
         #expect(payload.contains("latest boom"))
     }
@@ -265,7 +276,7 @@ struct CIToolsTests {
         ) { client }
 
         #expect(result.isError == false)
-        #expect(text(result).contains("\"found\" : false"))
+        #expect(text(result).contains("\"found\":false"))
     }
 
     @Test("asc_ci_latest_failure without a scope throws ASCError.invalidConfiguration")
@@ -386,6 +397,6 @@ struct CIToolsTests {
         #expect(result.isError == false)
         #expect(text(result).contains("METADATA_REJECTED"))
         #expect(text(result).lowercased().contains("metadata"))
-        #expect(text(result).contains("\"buildAttached\" : true") || text(result).contains("\"buildAttached\":true"))
+        #expect(text(result).contains("\"buildAttached\":true"))
     }
 }
