@@ -333,21 +333,41 @@ enum CITools {
         }
     }
 
+    /// The client every tool call in this process shares, built on first use.
+    ///
+    /// One client per process rather than one per call: the client owns the cached
+    /// JWT and the ``RateLimiter``, so a fresh client per call re-read the `.p8`,
+    /// re-signed a token, and started every call with no idea how close the key was
+    /// to Apple's hourly limit — which made the rate-limit heads-up blind to anything
+    /// but the call in hand. A missing-credentials failure is not cached, so fixing
+    /// the environment and retrying works without restarting the server.
+    private static let sharedClient = Mutex<AppStoreConnectClient?>(nil)
+
     static let defaultClient: ClientProvider = {
-        guard let credentials = ASCCredentials.fromEnvironment() else {
-            throw ASCError.invalidConfiguration(
-                reason: """
-                    Missing App Store Connect credentials. Set ASC_KEY_ID, ASC_ISSUER_ID, and \
-                    either ASC_PRIVATE_KEY (raw .p8 PEM) or ASC_PRIVATE_KEY_PATH.
-                    """
-            )
+        try sharedClient.withLock { cached in
+            if let client = cached { return client }
+            guard let credentials = ASCCredentials.fromEnvironment() else {
+                throw ASCError.invalidConfiguration(
+                    reason: """
+                        Missing App Store Connect credentials. Set ASC_KEY_ID, ASC_ISSUER_ID, and \
+                        either ASC_PRIVATE_KEY (raw .p8 PEM) or ASC_PRIVATE_KEY_PATH.
+                        """
+                )
+            }
+            let client = AppStoreConnectClient(credentials: credentials)
+            cached = client
+            return client
         }
-        return AppStoreConnectClient(credentials: credentials)
     }
 
+    /// Encodes a tool's payload as one text block.
+    ///
+    /// Compact rather than pretty-printed: the reader is a model, and indentation on
+    /// a nested failure report or a page of builds is a third or more of the bytes —
+    /// tokens the host pays for on every call. Keys stay sorted so output is stable.
     static func json<T: Encodable>(_ value: T) throws -> CallTool.Result {
         let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         let data = try encoder.encode(value)
         return .init(content: [.plainText(String(decoding: data, as: UTF8.self))], isError: false)
     }

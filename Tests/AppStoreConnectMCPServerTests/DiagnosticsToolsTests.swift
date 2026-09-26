@@ -105,7 +105,7 @@ struct DiagnosticsToolsTests {
         let payload = text(result)
         #expect(payload.contains("loadEverything()"))
         #expect(payload.contains("AppDelegate.swift"))
-        #expect(payload.contains("\"totalFrames\" : 1"))
+        #expect(payload.contains("\"totalFrames\":1"))
         // The raw tree keys must not leak through the normalization.
         #expect(!payload.contains("callStackRootFrames"))
     }
@@ -118,14 +118,14 @@ struct DiagnosticsToolsTests {
             [jsonCanned(["data": ["id": "c1", "attributes": ["logText": "Thread 0 crashed"]]])]
         )
         #expect(text(attached).contains("Thread 0 crashed"))
-        #expect(text(attached).contains("\"available\" : true"))
+        #expect(text(attached).contains("\"available\":true"))
 
         let pending = try await call(
             "asc_get_beta_crash_log",
             ["feedback_id": .string("f2")],
             [jsonCanned(["data": ["id": "c2", "attributes": [:]]])]
         )
-        #expect(text(pending).contains("\"available\" : false"))
+        #expect(text(pending).contains("\"available\":false"))
         #expect(pending.isError != true, "a log Apple hasn't attached yet is not a failure")
     }
 
