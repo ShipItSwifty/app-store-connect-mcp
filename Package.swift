@@ -25,12 +25,9 @@ let package = Package(
         .package(url: "https://github.com/vapor/jwt-kit", .upToNextMajor(from: "5.7.1")),
         .package(url: "https://github.com/apple/swift-log", from: "1.12.0"),
         .package(url: "https://github.com/maniramezan/SwiftyShell.git", from: "0.5.0"),
-        // Pin the SDK fix for object-valued experimental capabilities sent by Codex.
-        // Return to upstream once a release includes this decoding fix.
-        .package(
-            url: "https://github.com/maniramezan/swift-sdk.git",
-            revision: "46dec85bd63c1e4909718b024d243bc92c7d403d"
-        ),
+        // Keep the MCP SDK source local because the small capability decoding fix
+        // we need is not in an upstream release, and its original fork is gone.
+        .package(path: "Vendor/swift-sdk"),
         // Documentation only; contributes no code to any product.
         .package(url: "https://github.com/apple/swift-docc-plugin", from: "1.5.0"),
     ],
