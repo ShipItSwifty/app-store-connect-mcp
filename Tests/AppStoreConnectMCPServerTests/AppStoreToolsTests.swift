@@ -171,8 +171,19 @@ struct AppStoreToolsTests {
         }
     }
 
-    @Test("asc_rate_limit_status reports the position parsed from Apple's header")
+    @Test("asc_rate_limit_status reports the position already parsed by the client")
     func rateLimitStatus() async throws {
+        let client = makeMockMCPClient([])
+        await client.rateLimiter.update(from: ["X-Rate-Limit": "user-hour-lim:3500;user-hour-rem:700"])
+        let result = try await CITools.dispatch(name: "asc_rate_limit_status", arguments: [:]) { client }
+        let payload = text(result)
+        #expect(payload.contains("\"known\":true"))
+        #expect(payload.contains("3500"))
+        #expect(payload.contains("700"))
+    }
+
+    @Test("asc_rate_limit_status fetches a reading when no header has been seen")
+    func rateLimitStatusFetches() async throws {
         let result = try await call(
             "asc_rate_limit_status",
             [:],
@@ -202,6 +213,22 @@ struct AppStoreToolsTests {
     func rateLimitStatusUnknown() async throws {
         let result = try await call("asc_rate_limit_status", [:], [jsonCanned(["data": []])])
         #expect(text(result).contains("\"known\":false"))
+    }
+
+    @Test("Bundle-id app resolution is cached by the client")
+    func bundleIDResolutionIsCached() async throws {
+        let client = makeMockMCPClient([
+            jsonCanned(["data": [["id": "app-1", "attributes": ["bundleId": "com.example.app"]]]], pathContains: "/v1/apps"),
+            jsonCanned(["data": [["id": "b1", "attributes": ["version": "1"]]]], pathContains: "/v1/builds"),
+            jsonCanned(["data": [["id": "b2", "attributes": ["version": "2"]]]], pathContains: "/v1/builds"),
+        ])
+        let arguments: [String: Value] = ["bundle_id": .string("com.example.app")]
+        let first = try await CITools.dispatch(name: "asc_list_builds", arguments: arguments) { client }
+        let second = try await CITools.dispatch(name: "asc_list_builds", arguments: arguments) { client }
+        #expect(first.isError != true)
+        #expect(second.isError != true)
+        #expect(text(first).contains("b1"))
+        #expect(text(second).contains("b2"))
     }
 
     // MARK: - Passthrough

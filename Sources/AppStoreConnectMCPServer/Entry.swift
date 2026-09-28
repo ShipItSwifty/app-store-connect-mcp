@@ -59,7 +59,6 @@ struct AppStoreConnectMCP {
         await server.withMethodHandler(ReadResource.self) { params in
             try await ServerResources.read(uri: params.uri)
         }
-
         await server.withMethodHandler(ListPrompts.self) { _ in
             .init(prompts: ServerPrompts.all)
         }

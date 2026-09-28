@@ -102,6 +102,63 @@ enum WriteTools {
         },
 
         ToolSpec(
+            name: "asc_update_version_localization",
+            description: """
+                Update description, keywords, and/or promotional text for one locale on \
+                the app's latest App Store version. Pass only the fields to change — \
+                omitted fields are left untouched. THIS CHANGES PUBLIC-FACING STORE \
+                METADATA. Description and keywords are locked once a version is in \
+                review; promotional text can still be changed on a READY_FOR_SALE \
+                version without a new build or review.
+                """,
+            arguments: [
+                .string("bundle_id", "The app's bundle identifier.", required: true),
+                .string("locale", "Locale to update, e.g. en-US.", required: true),
+                .string("description", "New description text (optional)."),
+                .string("keywords", "New comma-separated keywords, max 100 characters (optional)."),
+                .string("promotional_text", "New promotional text, max 170 characters (optional)."),
+            ],
+            isReadOnly: false
+        ) { args, makeClient in
+            let service = AppStoreReleaseService(client: try makeClient())
+            let versionID = try await service.updateVersionLocalization(
+                bundleID: args.require("bundle_id"),
+                locale: args.require("locale"),
+                description: args.string("description"),
+                keywords: args.string("keywords"),
+                promotionalText: args.string("promotional_text")
+            )
+            return try json(VersionLocalizationResult(appStoreVersionID: versionID, locale: try args.require("locale")))
+        },
+
+        ToolSpec(
+            name: "asc_update_app_info_localization",
+            description: """
+                Update the app name and/or subtitle for one locale at the app-info \
+                level. Pass only the fields to change — omitted fields are left \
+                untouched. THIS CHANGES PUBLIC-FACING STORE METADATA. Unlike \
+                asc_update_version_localization, this is app-wide rather than \
+                version-scoped: it is not blocked while a version is in review.
+                """,
+            arguments: [
+                .string("bundle_id", "The app's bundle identifier.", required: true),
+                .string("locale", "Locale to update, e.g. en-US.", required: true),
+                .string("name", "New app name, max 30 characters (optional)."),
+                .string("subtitle", "New subtitle, max 30 characters (optional)."),
+            ],
+            isReadOnly: false
+        ) { args, makeClient in
+            let service = AppStoreReleaseService(client: try makeClient())
+            let appInfoID = try await service.updateAppInfoLocalization(
+                bundleID: args.require("bundle_id"),
+                locale: args.require("locale"),
+                name: args.string("name"),
+                subtitle: args.string("subtitle")
+            )
+            return try json(AppInfoLocalizationResult(appInfoID: appInfoID, locale: try args.require("locale")))
+        },
+
+        ToolSpec(
             name: "asc_submit_for_review",
             description: """
                 Submit the app's latest App Store version to App Review: sets the release \
@@ -176,6 +233,16 @@ enum WriteTools {
 
     private struct WhatsNewResult: Encodable {
         let appStoreVersionID: String
+        let locale: String
+    }
+
+    private struct VersionLocalizationResult: Encodable {
+        let appStoreVersionID: String
+        let locale: String
+    }
+
+    private struct AppInfoLocalizationResult: Encodable {
+        let appInfoID: String
         let locale: String
     }
 
