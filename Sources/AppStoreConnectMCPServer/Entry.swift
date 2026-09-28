@@ -39,12 +39,25 @@ struct AppStoreConnectMCP {
             instructions: ServerInstructions.text,
             capabilities: .init(
                 prompts: .init(listChanged: false),
+                resources: .init(subscribe: false, listChanged: false),
                 tools: .init(listChanged: false)
             )
         )
 
         await server.withMethodHandler(ListTools.self) { _ in
             .init(tools: CITools.all)
+        }
+
+        await server.withMethodHandler(ListResources.self) { _ in
+            .init(resources: ServerResources.resources)
+        }
+
+        await server.withMethodHandler(ListResourceTemplates.self) { _ in
+            .init(templates: ServerResources.templates)
+        }
+
+        await server.withMethodHandler(ReadResource.self) { params in
+            try await ServerResources.read(uri: params.uri)
         }
 
         await server.withMethodHandler(ListPrompts.self) { _ in
