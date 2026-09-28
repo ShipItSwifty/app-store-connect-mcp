@@ -252,7 +252,6 @@ enum AppStoreTools {
             description: """
                 Report this key's current App Store Connect hourly rate-limit position: the \
                 limit, requests remaining, percentage used, and the threshold at which this \
-<<<<<<< HEAD
                 server starts pausing requests. Free when another call reported the position \
                 in the last minute; otherwise costs one cheap request. Check it before a \
                 broad scan. Returns {"known": false} until a first response has been seen.

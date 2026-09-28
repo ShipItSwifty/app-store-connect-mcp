@@ -48,6 +48,17 @@ struct AppStoreConnectMCP {
             .init(tools: CITools.all)
         }
 
+        await server.withMethodHandler(ListResources.self) { _ in
+            .init(resources: ServerResources.resources)
+        }
+
+        await server.withMethodHandler(ListResourceTemplates.self) { _ in
+            .init(templates: ServerResources.templates)
+        }
+
+        await server.withMethodHandler(ReadResource.self) { params in
+            try await ServerResources.read(uri: params.uri)
+        }
         await server.withMethodHandler(ListPrompts.self) { _ in
             .init(prompts: ServerPrompts.all)
         }
@@ -64,18 +75,6 @@ struct AppStoreConnectMCP {
             } catch {
                 return .init(content: [.plainText("Error: \(error.localizedDescription)")], isError: true)
             }
-        }
-
-        await server.withMethodHandler(ListResources.self) { _ in
-            .init(resources: [])
-        }
-
-        await server.withMethodHandler(ListResourceTemplates.self) { _ in
-            .init(templates: MCPResources.templates)
-        }
-
-        await server.withMethodHandler(ReadResource.self) { params in
-            try await MCPResources.read(uri: params.uri, makeClient: CITools.defaultClient)
         }
 
         let transport = StdioTransport(logger: log)
