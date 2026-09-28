@@ -18,7 +18,7 @@ struct AppStoreReleaseServiceTests {
 
     // MARK: - pullMetadata
 
-    @Test("pullMetadata writes name/subtitle/description/keywords/release_notes per locale")
+    @Test("pullMetadata writes metadata files including promotional_text per locale")
     func pullMetadataWritesFiles() async throws {
         let dir = try tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -40,7 +40,7 @@ struct AppStoreReleaseServiceTests {
                         "id": "avl-en",
                         "attributes": [
                             "locale": "en-US", "description": "A description", "keywords": "a,b,c",
-                            "whatsNew": "Bug fixes",
+                            "whatsNew": "Bug fixes", "promotionalText": "New features",
                         ],
                     ]
                 ]
@@ -59,6 +59,10 @@ struct AppStoreReleaseServiceTests {
         #expect(try String(contentsOf: localeDir.appendingPathComponent("keywords.txt"), encoding: .utf8) == "a,b,c")
         #expect(
             try String(contentsOf: localeDir.appendingPathComponent("release_notes.txt"), encoding: .utf8) == "Bug fixes"
+        )
+        #expect(
+            try String(contentsOf: localeDir.appendingPathComponent("promotional_text.txt"), encoding: .utf8)
+                == "New features"
         )
     }
 
@@ -208,6 +212,44 @@ struct AppStoreReleaseServiceTests {
         #expect(observedPaths.value.contains("/v1/appInfoLocalizations"))
         // Version localization GET + POST share the same path, so it appears twice.
         #expect(observedPaths.value.filter { $0 == "/v1/appStoreVersionLocalizations" }.count == 2)
+    }
+
+    @Test("pushMetadata sends promotional_text as the App Store Connect promotionalText attribute")
+    func pushMetadataEncodesPromotionalText() async throws {
+        let dir = try tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let localeDir = dir.appendingPathComponent("en-US", isDirectory: true)
+        try FileManager.default.createDirectory(at: localeDir, withIntermediateDirectories: true)
+        try "Limited-time offer".write(
+            to: localeDir.appendingPathComponent("promotional_text.txt"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let bodies = LockedBox<[[String: Any]]>([])
+        let client = makeClientRecording(
+            observedBodies: bodies,
+            responses: [
+                appResponse(),
+                .json(["data": [["id": "ver-1", "attributes": ["versionString": "1.0.0"]]]]),
+                .json(["data": [["id": "info-1"]]]),
+                .json(["data": []]),  // existing version localization -> none
+                .json(["data": ["id": "avl-new"]]),  // POST version localization
+            ]
+        )
+
+        let result = try await AppStoreReleaseService(client: client).pushMetadata(
+            bundleID: "com.example.app",
+            directory: dir.path,
+            resolveVersionString: { "1.0.0" }
+        )
+
+        #expect(result.localesProcessed == 1)
+        let post = try #require(bodies.value.last)
+        let data = try #require(post["data"] as? [String: Any])
+        let attributes = try #require(data["attributes"] as? [String: Any])
+        #expect(attributes["promotionalText"] as? String == "Limited-time offer")
+        #expect(attributes["promotional_text"] == nil)
     }
 
     @Test("pushMetadata updates an existing localization via PATCH")

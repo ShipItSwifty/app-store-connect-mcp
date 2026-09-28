@@ -136,6 +136,64 @@ struct WriteToolsTests {
         #expect((data["attributes"] as? [String: Any])?["whatsNew"] as? String == "Bug fixes.")
     }
 
+    @Test("asc_update_version_localization patches only the fields it was given")
+    func updateVersionLocalization() async throws {
+        let result = try await callWrite(
+            "asc_update_version_localization",
+            [
+                "bundle_id": .string("com.example.app"), "locale": .string("en-US"),
+                "keywords": .string("goals,journal,sleep"),
+            ],
+            [
+                jsonCanned(["data": [["id": "app-1", "attributes": ["bundleId": "com.example.app"]]]], pathContains: "/v1/apps?"),
+                jsonCanned(["data": [["id": "v1", "attributes": ["versionString": "1.4.0"]]]], pathContains: "appStoreVersions"),
+                jsonCanned(["data": [["id": "loc-1", "attributes": ["locale": "en-US"]]]], pathContains: "appStoreVersionLocalizations?"),
+                jsonCanned(["data": ["id": "loc-1"]], pathContains: "appStoreVersionLocalizations/loc-1"),
+            ]
+        )
+        #expect(text(result).contains("v1"))
+
+        let data = try #require(MCPMockURLProtocol.lastRequestBody()?["data"] as? [String: Any])
+        let attributes = try #require(data["attributes"] as? [String: Any])
+        #expect(attributes["keywords"] as? String == "goals,journal,sleep")
+        #expect(attributes["description"] == nil)
+        #expect(attributes["promotionalText"] == nil)
+    }
+
+    @Test("asc_update_version_localization rejects a call with no fields to change")
+    func updateVersionLocalizationRequiresAField() async throws {
+        do {
+            _ = try await callWrite(
+                "asc_update_version_localization",
+                ["bundle_id": .string("com.example.app"), "locale": .string("en-US")],
+                []
+            )
+            Issue.record("expected a configuration error")
+        } catch let error as ASCError {
+            #expect(error.localizedDescription.contains("description"))
+        }
+    }
+
+    @Test("asc_update_app_info_localization patches the subtitle at the app-info level")
+    func updateAppInfoLocalization() async throws {
+        let result = try await callWrite(
+            "asc_update_app_info_localization",
+            ["bundle_id": .string("com.example.app"), "locale": .string("en-US"), "subtitle": .string("New Subtitle")],
+            [
+                jsonCanned(["data": [["id": "app-1", "attributes": ["bundleId": "com.example.app"]]]], pathContains: "/v1/apps?"),
+                jsonCanned(["data": [["id": "info-1"]]], pathContains: "appInfos"),
+                jsonCanned(["data": [["id": "ail-1", "attributes": ["locale": "en-US"]]]], pathContains: "appInfoLocalizations?"),
+                jsonCanned(["data": ["id": "ail-1"]], pathContains: "appInfoLocalizations/ail-1"),
+            ]
+        )
+        #expect(text(result).contains("info-1"))
+
+        let data = try #require(MCPMockURLProtocol.lastRequestBody()?["data"] as? [String: Any])
+        let attributes = try #require(data["attributes"] as? [String: Any])
+        #expect(attributes["subtitle"] as? String == "New Subtitle")
+        #expect(attributes["name"] == nil)
+    }
+
     @Test("asc_submit_for_review explains itself when there is no version and none was named")
     func submitWithoutVersion() async throws {
         do {

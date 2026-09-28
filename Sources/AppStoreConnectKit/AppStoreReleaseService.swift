@@ -48,7 +48,8 @@ public struct AppStoreReleaseService: Sendable {
     /// Downloads App Store metadata localizations to the local filesystem.
     ///
     /// For each locale, creates a subdirectory under `directory` and writes
-    /// `name.txt`, `subtitle.txt`, `description.txt`, `keywords.txt`, and `release_notes.txt`.
+    /// `name.txt`, `subtitle.txt`, `description.txt`, `keywords.txt`, `release_notes.txt`,
+    /// and `promotional_text.txt`.
     ///
     /// - Parameters:
     ///   - bundleID: The app's bundle identifier used to look up the ASC app.
@@ -99,6 +100,7 @@ public struct AppStoreReleaseService: Sendable {
             try writeIfPresent(versionLocalization?.attributes?.description, to: "\(localeDir)/description.txt")
             try writeIfPresent(versionLocalization?.attributes?.keywords, to: "\(localeDir)/keywords.txt")
             try writeIfPresent(versionLocalization?.attributes?.whatsNew, to: "\(localeDir)/release_notes.txt")
+            try writeIfPresent(versionLocalization?.attributes?.promotionalText, to: "\(localeDir)/promotional_text.txt")
             localeCount += 1
         }
 
@@ -112,7 +114,8 @@ public struct AppStoreReleaseService: Sendable {
     /// Uploads local metadata files to App Store Connect localizations.
     ///
     /// Reads locale subdirectories from `directory` and upserts `name`, `subtitle`,
-    /// `description`, `keywords`, and `whatsNew` (release notes) for each locale.
+    /// `description`, `keywords`, `whatsNew` (release notes), and `promotionalText`
+    /// for each locale.
     ///
     /// - Parameters:
     ///   - bundleID: The app's bundle identifier used to look up the ASC app.
@@ -148,7 +151,8 @@ public struct AppStoreReleaseService: Sendable {
                 subtitle: try? readTrimmedText(at: "\(localeDir)/subtitle.txt"),
                 description: try? readTrimmedText(at: "\(localeDir)/description.txt"),
                 keywords: try? readTrimmedText(at: "\(localeDir)/keywords.txt"),
-                whatsNew: try? readTrimmedText(at: "\(localeDir)/release_notes.txt")
+                whatsNew: try? readTrimmedText(at: "\(localeDir)/release_notes.txt"),
+                promotionalText: try? readTrimmedText(at: "\(localeDir)/promotional_text.txt")
             )
 
             try await upsertAppInfoLocalization(appID: app.id, appInfoID: appInfoID, metadata: metadata)
@@ -260,11 +264,81 @@ public struct AppStoreReleaseService: Sendable {
                 subtitle: nil,
                 description: nil,
                 keywords: nil,
-                whatsNew: whatsNew
+                whatsNew: whatsNew,
+                promotionalText: nil
             )
         )
         logger.info("Updated what's new for '\(locale)' on version '\(version.id)'")
         return version.id
+    }
+
+    /// Updates description, keywords, and/or promotional text for one locale on the
+    /// app's latest App Store version. Pass only the fields to change — the rest are
+    /// left untouched.
+    @discardableResult
+    public func updateVersionLocalization(
+        bundleID: String,
+        locale: String,
+        description: String? = nil,
+        keywords: String? = nil,
+        promotionalText: String? = nil
+    ) async throws -> String {
+        guard description != nil || keywords != nil || promotionalText != nil else {
+            throw ASCError.invalidConfiguration(
+                reason: "Pass at least one of description, keywords, or promotionalText."
+            )
+        }
+        let app = try await client.app(bundleID: bundleID)
+        guard let version = try await resolveLatestAppStoreVersion(appID: app.id) else {
+            throw ASCError.apiError(
+                statusCode: 404,
+                body: "App '\(bundleID)' has no App Store version to update."
+            )
+        }
+        try await upsertAppStoreVersionLocalization(
+            appStoreVersionID: version.id,
+            metadata: LocalizedMetadata(
+                locale: locale,
+                name: nil,
+                subtitle: nil,
+                description: description,
+                keywords: keywords,
+                whatsNew: nil,
+                promotionalText: promotionalText
+            )
+        )
+        logger.info("Updated version localization for '\(locale)' on version '\(version.id)'")
+        return version.id
+    }
+
+    /// Updates the app name and/or subtitle for one locale at the app-info level.
+    @discardableResult
+    public func updateAppInfoLocalization(
+        bundleID: String,
+        locale: String,
+        name: String? = nil,
+        subtitle: String? = nil
+    ) async throws -> String {
+        guard name != nil || subtitle != nil else {
+            throw ASCError.invalidConfiguration(reason: "Pass at least one of name or subtitle.")
+        }
+        let app = try await client.app(bundleID: bundleID)
+        let appInfoID = try await resolveAppInfoID(appID: app.id)
+        try await upsertAppInfoLocalization(
+            appID: app.id,
+            appInfoID: appInfoID,
+            metadata: LocalizedMetadata(
+                locale: locale,
+                name: name,
+                subtitle: subtitle,
+                description: nil,
+                keywords: nil,
+                whatsNew: nil,
+                promotionalText: nil
+            )
+        )
+        logger.info("Updated app info localization for '\(locale)' on app '\(app.id)'")
+        return appInfoID
     }
 
     private func resolveLatestAppStoreVersion(appID: String) async throws -> AppStoreVersionResource? {
@@ -350,7 +424,10 @@ public struct AppStoreReleaseService: Sendable {
     }
 
     private func upsertAppStoreVersionLocalization(appStoreVersionID: String, metadata: LocalizedMetadata) async throws {
-        guard metadata.description != nil || metadata.keywords != nil || metadata.whatsNew != nil else { return }
+        guard
+            metadata.description != nil || metadata.keywords != nil || metadata.whatsNew != nil
+                || metadata.promotionalText != nil
+        else { return }
 
         let existing: ASCListResponse<AppStoreVersionLocalizationResource> = try await client.get(
             "/v1/appStoreVersionLocalizations",
@@ -370,7 +447,8 @@ public struct AppStoreReleaseService: Sendable {
                         attributes: .init(
                             description: metadata.description,
                             keywords: metadata.keywords,
-                            whatsNew: metadata.whatsNew
+                            whatsNew: metadata.whatsNew,
+                            promotionalText: metadata.promotionalText
                         )
                     )
                 )
@@ -385,7 +463,8 @@ public struct AppStoreReleaseService: Sendable {
                             locale: metadata.locale,
                             description: metadata.description,
                             keywords: metadata.keywords,
-                            whatsNew: metadata.whatsNew
+                            whatsNew: metadata.whatsNew,
+                            promotionalText: metadata.promotionalText
                         ),
                         relationships: .init(
                             appStoreVersion: .init(data: .init(type: "appStoreVersions", id: appStoreVersionID))
@@ -414,6 +493,7 @@ private struct LocalizedMetadata: Sendable {
     let description: String?
     let keywords: String?
     let whatsNew: String?
+    let promotionalText: String?
 }
 
 private struct AppInfoLocalizationResource: Codable, Sendable {
@@ -521,6 +601,7 @@ private struct AppStoreVersionLocalizationResource: Codable, Sendable {
         let description: String?
         let keywords: String?
         let whatsNew: String?
+        let promotionalText: String?
     }
 }
 
@@ -537,6 +618,7 @@ private struct AppStoreVersionLocalizationCreateRequest: Encodable, Sendable {
             let description: String?
             let keywords: String?
             let whatsNew: String?
+            let promotionalText: String?
         }
 
         struct Relationships: Encodable, Sendable {
@@ -557,6 +639,7 @@ private struct AppStoreVersionLocalizationUpdateRequest: Encodable, Sendable {
             let description: String?
             let keywords: String?
             let whatsNew: String?
+            let promotionalText: String?
         }
     }
 }

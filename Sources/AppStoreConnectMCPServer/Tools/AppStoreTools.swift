@@ -122,7 +122,8 @@ enum AppStoreTools {
                 .string("app_id", "App Store Connect app id (or pass bundle_id)."),
                 .string("bundle_id", "Bundle identifier, resolved to an app id."),
                 .string("version", "Build number to inspect. Defaults to the newest build."),
-            ]
+            ],
+            outputSchema: CITools.testFlightBuildStatusOutputSchema
         ) { args, makeClient in
             let client = try makeClient()
             let appID = try await resolveAppID(args, client: client)
@@ -254,7 +255,8 @@ enum AppStoreTools {
                 server starts pausing requests. Free when another call reported the position \
                 in the last minute; otherwise costs one cheap request. Check it before a \
                 broad scan. Returns {"known": false} until a first response has been seen.
-                """
+                """,
+            outputSchema: CITools.rateLimitOutputSchema
         ) { _, makeClient in
             let client = try makeClient()
             // Every response carries the header, so a position another call saw moments
@@ -297,7 +299,12 @@ enum AppStoreTools {
             let (path, inlineQuery) = try parseAPIPath(args.require("path"))
             let query = try inlineQuery.merging(parseQueryObject(args.string("query"))) { _, explicit in explicit }
             let data = try await makeClient().getRaw(path, query: query)
-            return .init(content: [.plainText(String(decoding: data, as: UTF8.self))], isError: false)
+            let structuredContent = try? JSONDecoder().decode(Value.self, from: data)
+            return .init(
+                content: [.plainText(String(decoding: data, as: UTF8.self))],
+                structuredContent: structuredContent,
+                isError: false
+            )
         },
     ]
 
