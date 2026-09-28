@@ -149,7 +149,6 @@ struct CIToolsTests {
         ) { client }
 
         #expect(result.isError == false)
-        #expect(result.structuredContent != nil)
         let payload = text(result)
         #expect(payload.contains("run-1"))
         #expect(payload.contains("SUCCEEDED"))

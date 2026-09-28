@@ -299,12 +299,7 @@ enum AppStoreTools {
             let (path, inlineQuery) = try parseAPIPath(args.require("path"))
             let query = try inlineQuery.merging(parseQueryObject(args.string("query"))) { _, explicit in explicit }
             let data = try await makeClient().getRaw(path, query: query)
-            let structuredContent = try? JSONDecoder().decode(Value.self, from: data)
-            return .init(
-                content: [.plainText(String(decoding: data, as: UTF8.self))],
-                structuredContent: structuredContent,
-                isError: false
-            )
+            return .init(content: [.plainText(String(decoding: data, as: UTF8.self))], isError: false)
         },
     ]
 

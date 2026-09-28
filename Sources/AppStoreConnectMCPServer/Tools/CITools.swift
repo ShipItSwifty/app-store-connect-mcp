@@ -379,12 +379,7 @@ enum CITools {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         let data = try encoder.encode(value)
-        let structuredContent = try JSONDecoder().decode(Value.self, from: data)
-        return try CallTool.Result(
-            content: [.plainText(String(decoding: data, as: UTF8.self))],
-            structuredContent: structuredContent,
-            isError: false
-        )
+        return .init(content: [.plainText(String(decoding: data, as: UTF8.self))], isError: false)
     }
 
     // MARK: - Output schemas

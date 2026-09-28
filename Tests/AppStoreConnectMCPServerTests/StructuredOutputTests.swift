@@ -78,6 +78,12 @@ struct StructuredOutputTests {
         "asc_ci_latest_failure",
         "asc_submission_status",
         "asc_rate_limit_status",
+        "asc_testflight_build_status",
+        "asc_get_diagnostic_logs",
+        "asc_perf_power_metrics",
+        "asc_list_analytics_reports",
+        "asc_get_analytics_report",
+        "asc_sales_report",
     ]
 
     @Test("Exactly the report tools advertise an object outputSchema")
