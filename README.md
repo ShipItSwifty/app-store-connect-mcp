@@ -34,8 +34,8 @@ export ASC_KEY_ID=… ASC_ISSUER_ID=… ASC_PRIVATE_KEY_PATH=/absolute/path/Auth
 scripts/install-mcp.sh
 ```
 
-For example, ask your agent: “Why did the last Xcode Cloud build of
-com.example.app fail?” See the [MCP setup guide](guides/mcp-setup.md) for
+For example, ask your agent: "Why did the last Xcode Cloud build of
+com.example.app fail?" See the [MCP setup guide](guides/mcp-setup.md) for
 credentials and supported clients.
 
 ## License

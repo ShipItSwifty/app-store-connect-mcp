@@ -252,16 +252,21 @@ enum AppStoreTools {
             description: """
                 Report this key's current App Store Connect hourly rate-limit position: the \
                 limit, requests remaining, percentage used, and the threshold at which this \
-                server starts pausing requests. Reuses a reading from the last minute; \
-                otherwise makes one cheap request. Returns {"known": false} if no \
-                rate-limit header is available.
+<<<<<<< HEAD
+                server starts pausing requests. Free when another call reported the position \
+                in the last minute; otherwise costs one cheap request. Check it before a \
+                broad scan. Returns {"known": false} until a first response has been seen.
                 """,
             outputSchema: CITools.rateLimitOutputSchema
         ) { _, makeClient in
             let client = try makeClient()
+            // Every response carries the header, so a position another call saw moments
+            // ago is as good as a fresh one.
             if let recent = await client.rateLimiter.status(maxAge: .seconds(60)) {
                 return try json(RateLimitReport(known: true, status: recent))
             }
+            // Otherwise make the cheapest call there is (a single-app page) purely to
+            // learn the current position.
             _ = try? await client.apps(limit: 1)
             guard let status = await client.rateLimiter.status(maxAge: .seconds(60)) else {
                 return try json(RateLimitReport(known: false, status: nil))
@@ -331,7 +336,7 @@ enum AppStoreTools {
         guard let bundleID = args.string("bundle_id") else {
             throw ASCError.invalidConfiguration(reason: "Pass either 'app_id' or 'bundle_id'.")
         }
-        return try await client.app(bundleID: bundleID).id
+        return try await client.appID(bundleID: bundleID)
     }
 
     /// Splits a caller-supplied path into a path and its inline query, rejecting

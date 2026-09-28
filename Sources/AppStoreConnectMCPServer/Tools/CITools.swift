@@ -370,6 +370,10 @@ enum CITools {
     }
 
     /// Encodes a tool's payload as one text block.
+    ///
+    /// Compact rather than pretty-printed: the reader is a model, and indentation on
+    /// a nested failure report or a page of builds is a third or more of the bytes —
+    /// tokens the host pays for on every call. Keys stay sorted so output is stable.
     static func json<T: Encodable>(_ value: T) throws -> CallTool.Result {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]

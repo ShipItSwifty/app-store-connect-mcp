@@ -53,6 +53,10 @@ public actor AppStoreConnectClient {
     private var appsByBundleID: [String: ASCApp] = [:]
     private let logger = Logger.forType(subsystem: "AppStoreConnectKit", AppStoreConnectClient.self)
 
+    /// Apps already resolved by bundle id. A bundle id never moves to another app, so
+    /// an entry stays valid for the life of the client; see ``appID(bundleID:)``.
+    var appsByBundleID: [String: ASCApp] = [:]
+
     /// The JWT token generator used for authentication.
     public let jwtGenerator: JWTGenerator
 
