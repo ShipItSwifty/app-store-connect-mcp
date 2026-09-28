@@ -90,6 +90,10 @@ coverage climbs, don't lower it without a reason.
   that validate will reject a result that doesn't match. Change the model, change the
   schema: `StructuredOutputTests`' `schemaViolations` runs over the mocked report tests.
   Only non-optional stored properties may be `required` (nil optionals are omitted).
+- `Sources/AppStoreConnectMCPServer/Resources/ServerResources.swift` — MCP resources.
+  Each `ResourceSpec` names a URI (template) and the read-only tool that serves it; URI
+  placeholders are that tool's argument names. `ServerResourcesTests` fails if a
+  resource points at a missing or write tool, or leaves a required argument unbound.
 - `Sources/AppStoreConnectMCPServer/Prompts/ServerPrompts.swift` — `ServerInstructions`
   (the `initialize` instructions) and `ServerPrompts` (MCP prompts, one `PromptSpec`
   each). `ServerPromptsTests` fails if either names a tool the catalog doesn't
