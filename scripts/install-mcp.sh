@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
 # install-mcp.sh — register app-store-connect-mcp with whichever of Claude Code,
-# Claude Desktop, Codex CLI, Cursor, and Windsurf are installed on this machine.
+# Claude Desktop, Codex CLI, Cursor, and Windsurf are installed on this machine, and
+# optionally install the companion Claude Code skill (skills/app-store-connect).
 #
 # Never run automatically (not a Homebrew postinstall hook, not part of `swift build`).
 # You run this by hand, it asks before touching each client's config, and every write
@@ -27,7 +28,7 @@ while [[ $# -gt 0 ]]; do
         --yes|-y) ASSUME_YES=1; shift ;;
         --binary) BINARY="$2"; shift 2 ;;
         -h|--help)
-            sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+            sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'
             exit 0
             ;;
         *)
@@ -118,6 +119,17 @@ if command -v claude >/dev/null 2>&1; then
             --env "ASC_PRIVATE_KEY_PATH=${ASC_PRIVATE_KEY_PATH}" \
             -- "${BINARY}"
         echo "  registered with Claude Code"
+    fi
+    # The companion skill (investigation playbooks) lives next to this script in a
+    # checkout; a copy of the script on its own has nothing to install.
+    skill_source="$(cd "$(dirname "$0")/.." && pwd)/skills/app-store-connect"
+    skill_target="${HOME}/.claude/skills/app-store-connect"
+    if [[ -f "${skill_source}/SKILL.md" ]]; then
+        if confirm "Install the app-store-connect skill for Claude Code (${skill_target})?"; then
+            mkdir -p "${skill_target}"
+            cp "${skill_source}/SKILL.md" "${skill_target}/SKILL.md"
+            echo "  installed skill to ${skill_target}"
+        fi
     fi
 else
     echo "Claude Code not found (no 'claude' on PATH) — skipping."
