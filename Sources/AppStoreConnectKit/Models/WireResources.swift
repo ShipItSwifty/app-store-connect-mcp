@@ -78,9 +78,13 @@ struct BuildResource: Codable, Sendable {
 extension AppStoreConnectClient {
     /// Resolves the App Store Connect app for a bundle identifier.
     ///
+    /// Successful lookups are cached on the client, so every tool or service call
+    /// after the first skips the `/v1/apps` round-trip. A miss is not cached.
+    ///
     /// - Throws: ``ASCError/apiError(statusCode:body:)`` with status 404 when no app
     ///   in the team matches `bundleID`.
     func app(bundleID: String) async throws -> ASCApp {
+        if let cached = appsByBundleID[bundleID] { return cached }
         let apps: ASCListResponse<ASCApp> = try await get(
             "/v1/apps",
             query: ["filter[bundleId]": bundleID]
@@ -88,9 +92,22 @@ extension AppStoreConnectClient {
         guard let app = apps.data.first else {
             throw ASCError.apiError(
                 statusCode: 404,
-                body: "App with bundle ID '\(bundleID)' not found in App Store Connect"
+                body: "No app with bundle ID '\(bundleID)' is visible to this API key."
             )
         }
+        appsByBundleID[bundleID] = app
         return app
+    }
+
+    /// The App Store Connect app id for a bundle identifier.
+    ///
+    /// Cached for the life of the client after the first successful lookup — a
+    /// bundle id is permanently bound to one app — so callers that only have a bundle
+    /// id pay for the lookup once rather than on every call.
+    ///
+    /// - Throws: ``ASCError/apiError(statusCode:body:)`` with status 404 when no app
+    ///   visible to this key has that bundle id.
+    public func appID(bundleID: String) async throws -> String {
+        try await app(bundleID: bundleID).id
     }
 }

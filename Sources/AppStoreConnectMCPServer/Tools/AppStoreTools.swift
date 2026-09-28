@@ -251,15 +251,21 @@ enum AppStoreTools {
             description: """
                 Report this key's current App Store Connect hourly rate-limit position: the \
                 limit, requests remaining, percentage used, and the threshold at which this \
-                server starts pausing requests. Costs one cheap request. Check it before a \
+                server starts pausing requests. Free when another call reported the position \
+                in the last minute; otherwise costs one cheap request. Check it before a \
                 broad scan. Returns {"known": false} until a first response has been seen.
                 """
         ) { _, makeClient in
             let client = try makeClient()
-            // The limit is only known from a response header, so make the cheapest call
-            // there is (a single-app page) purely to learn the current position.
+            // Every response carries the header, so a position another call saw moments
+            // ago is as good as a fresh one.
+            if let recent = await client.rateLimiter.status(maxAge: .seconds(60)) {
+                return try json(RateLimitReport(known: true, status: recent))
+            }
+            // Otherwise make the cheapest call there is (a single-app page) purely to
+            // learn the current position.
             _ = try? await client.apps(limit: 1)
-            guard let status = await client.rateLimiter.status() else {
+            guard let status = await client.rateLimiter.status(maxAge: .seconds(60)) else {
                 return try json(RateLimitReport(known: false, status: nil))
             }
             return try json(RateLimitReport(known: true, status: status))
@@ -291,7 +297,7 @@ enum AppStoreTools {
             let (path, inlineQuery) = try parseAPIPath(args.require("path"))
             let query = try inlineQuery.merging(parseQueryObject(args.string("query"))) { _, explicit in explicit }
             let data = try await makeClient().getRaw(path, query: query)
-            return .init(content: [.plainText(prettyPrinted(data))], isError: false)
+            return .init(content: [.plainText(String(decoding: data, as: UTF8.self))], isError: false)
         },
     ]
 
@@ -322,14 +328,7 @@ enum AppStoreTools {
         guard let bundleID = args.string("bundle_id") else {
             throw ASCError.invalidConfiguration(reason: "Pass either 'app_id' or 'bundle_id'.")
         }
-        let apps = try await client.apps(bundleID: bundleID, limit: 1)
-        guard let app = apps.data.first else {
-            throw ASCError.apiError(
-                statusCode: 404,
-                body: "No app with bundle id '\(bundleID)' is visible to this API key."
-            )
-        }
-        return app.id
+        return try await client.appID(bundleID: bundleID)
     }
 
     /// Splits a caller-supplied path into a path and its inline query, rejecting
@@ -371,18 +370,6 @@ enum AppStoreTools {
             default: result[pair.key] = String(describing: pair.value)
             }
         }
-    }
-
-    /// Re-formats a raw JSON body for readability, passing it through unchanged if it
-    /// is not JSON after all.
-    static func prettyPrinted(_ data: Data) -> String {
-        guard let object = try? JSONSerialization.jsonObject(with: data),
-            let pretty = try? JSONSerialization.data(
-                withJSONObject: object,
-                options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-            )
-        else { return String(decoding: data, as: UTF8.self) }
-        return String(decoding: pretty, as: UTF8.self)
     }
 
     private static func json<T: Encodable>(_ value: T) throws -> CallTool.Result {

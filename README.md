@@ -47,7 +47,7 @@ the REST plumbing. On top of the generic `get` / `post` / `patch` it offers:
 
 | Area | Entry points |
 |---|---|
-| **Apps & discovery** | `apps(bundleID:name:limit:)`, `app(id:)` |
+| **Apps & discovery** | `apps(bundleID:name:limit:)`, `app(id:)`, `appID(bundleID:)` (cached per client) |
 | **App Store versions** | `appStoreVersions(appID:platform:limit:)`, `appStoreVersionLocalizations(versionID:limit:)` |
 | **Builds & TestFlight** | `builds(appID:version:preReleaseVersion:processingState:limit:)`, `buildBetaDetail(buildID:)`, `betaBuildLocalizations(buildID:)`, `betaGroups(appID:)`, `betaTesters(betaGroupID:)`, `betaFeedback(appID:kind:…)` |
 | **Customer reviews** | `customerReviews(appID:rating:territory:limit:)` |
@@ -200,7 +200,8 @@ Set these environment variables (same names as `altool` / Fastlane):
 | `asc_api_get` | `path`, `query?` | **escape hatch**: any authenticated `GET` against `/v1/…` or `/v2/…`, returned verbatim — appInfos, prices, in-app purchases, subscriptions, users, devices, certificates, and anything Apple ships next. Read-only by construction; a `links.next` URL can be pasted straight back as `path` |
 
 Every app-scoped tool accepts **either** `app_id` **or** `bundle_id` (the bundle id
-costs one extra lookup). Every tool above is advertised with MCP's `readOnlyHint`, so
+costs one lookup the first time it's seen; the answer is cached for the life of the
+server). Every tool above is advertised with MCP's `readOnlyHint`, so
 a host can auto-approve them instead of prompting once per lookup during an
 investigation.
 
@@ -219,6 +220,13 @@ naming the variable rather than "unknown tool".
 | `asc_update_whats_new` | `bundle_id`, `locale`, `text` | sets the release notes for one locale on the latest version; fails once that version is in review |
 | `asc_submit_for_review` | `bundle_id`, `version_string?`, `automatic_release?`, `phased_release?` | **submits the app to App Review** — irreversible and public |
 | `asc_create_analytics_report_request` | `app_id?` / `bundle_id?`, `access_type?` | creates the analytics report request that makes `asc_get_analytics_report` return anything |
+
+**Performance.** One API client is shared for the life of the server process, so the
+signed JWT is reused (re-signed only near expiry), bundle-id lookups are cached, and
+the rate-limit position carries across calls — `asc_rate_limit_status` answers from
+the last response's header when it's under a minute old instead of spending a request.
+Tool results are compact JSON (sorted keys, no indentation): the reader is a model,
+and whitespace on a nested failure report is tokens the host pays for.
 
 The server does no analysis of its own beyond normalization (`CIFailureReport`, `CILatestFailure`, `CILogParser`, `AppStoreSubmissionService`) — the calling agent reasons over the data. When a response leaves the App Store Connect hourly rate limit within 10 points of its throttle threshold, an extra text block is appended warning that further calls may stall.
 
