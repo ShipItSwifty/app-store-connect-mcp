@@ -11,6 +11,16 @@ extension Tool.Content {
     static func plainText(_ text: String) -> Self {
         .text(text: text, annotations: nil, _meta: nil)
     }
+
+    var isText: Bool {
+        if case .text = self { return true }
+        return false
+    }
+
+    var text: String? {
+        guard case .text(let text, _, _) = self else { return nil }
+        return text
+    }
 }
 
 /// One argument of a ``ToolSpec``, from which the JSON Schema is generated.
@@ -122,13 +132,12 @@ struct ToolSpec: Sendable {
 
     /// The MCP tool advertised to the host, with its schema generated from ``arguments``.
     var tool: Tool {
-        var properties: [String: Value] = [:]
-        for argument in arguments {
-            properties[argument.name] = .object([
+        let properties: [String: Value] = Dictionary(uniqueKeysWithValues: arguments.map { argument in
+            (argument.name, .object([
                 "type": .string(argument.kind.rawValue),
                 "description": .string(argument.description),
-            ])
-        }
+            ]))
+        })
 
         var schema: [String: Value] = [
             "type": .string("object"),
@@ -163,15 +172,15 @@ extension CallTool.Result {
     /// result is returned unchanged.
     func addingStructuredContent() -> CallTool.Result {
         guard isError != true else { return self }
-        for block in content {
-            guard case .text(let text, _, _) = block,
-                let value = try? JSONDecoder().decode(Value.self, from: Data(text.utf8)),
-                case .object = value
-            else { continue }
-            // `Optional.some` pins the non-throwing overload; a bare `Value` would match
-            // the SDK's generic `Codable` initializer, which throws.
-            return CallTool.Result(content: content, structuredContent: Optional.some(value), isError: isError, _meta: _meta)
-        }
-        return self
+        let structured = content
+            .filter(\.isText)
+            .compactMap(\.text)
+            .compactMap { try? JSONDecoder().decode(Value.self, from: Data($0.utf8)) }
+            .filter { $0.objectValue != nil }
+            .first
+        guard let structured else { return self }
+        // `Optional.some` pins the non-throwing overload; a bare `Value` would match
+        // the SDK's generic `Codable` initializer, which throws.
+        return CallTool.Result(content: content, structuredContent: Optional.some(structured), isError: isError, _meta: _meta)
     }
 }
