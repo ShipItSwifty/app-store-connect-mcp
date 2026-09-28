@@ -16,7 +16,7 @@ set -euo pipefail
 
 MIN_LINE_COVERAGE="${1:-${MIN_LINE_COVERAGE:-85}}"
 # Product code only: exclude the build dir, tests, SwiftPM checkouts.
-IGNORE_REGEX='\.build|Tests/|checkouts/'
+IGNORE_REGEX='\.build|Tests/|checkouts/|Vendor/'
 
 profdata="$(find .build -name 'default.profdata' -path '*codecov*' 2>/dev/null | head -1)"
 if [[ -z "${profdata}" ]]; then
