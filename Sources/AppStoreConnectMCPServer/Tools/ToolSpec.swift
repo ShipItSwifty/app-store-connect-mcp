@@ -132,12 +132,16 @@ struct ToolSpec: Sendable {
 
     /// The MCP tool advertised to the host, with its schema generated from ``arguments``.
     var tool: Tool {
-        let properties: [String: Value] = Dictionary(uniqueKeysWithValues: arguments.map { argument in
-            (argument.name, .object([
-                "type": .string(argument.kind.rawValue),
-                "description": .string(argument.description),
-            ]))
-        })
+        let properties: [String: Value] = Dictionary(
+            uniqueKeysWithValues: arguments.map { argument in
+                (
+                    argument.name,
+                    .object([
+                        "type": .string(argument.kind.rawValue),
+                        "description": .string(argument.description),
+                    ])
+                )
+            })
 
         var schema: [String: Value] = [
             "type": .string("object"),
@@ -172,7 +176,8 @@ extension CallTool.Result {
     /// result is returned unchanged.
     func addingStructuredContent() -> CallTool.Result {
         guard isError != true else { return self }
-        let structured = content
+        let structured =
+            content
             .filter(\.isText)
             .compactMap(\.text)
             .compactMap { try? JSONDecoder().decode(Value.self, from: Data($0.utf8)) }
