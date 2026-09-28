@@ -87,6 +87,14 @@ coverage climbs, don't lower it without a reason.
   that validate will reject a result that doesn't match. Change the model, change the
   schema: `StructuredOutputTests`' `schemaViolations` runs over the mocked report tests.
   Only non-optional stored properties may be `required` (nil optionals are omitted).
+- **Tool output is compact JSON** (`CITools.json`: sorted keys, no pretty-printing), and
+  `asc_api_get` passes Apple's body through verbatim. Tests assert on `"key":value`
+  with no spaces.
+- **One `AppStoreConnectClient` per server process** (`CITools.defaultClient`), so the
+  JWT, the `RateLimiter` position, and the bundle-id → app cache (`appID(bundleID:)`)
+  persist across tool calls. Tests inject their own client through
+  `CITools.dispatch(…makeClient:)` and never touch the shared one — and a fresh mock
+  client per test is what keeps the bundle-id cache from leaking between tests.
 - **Writes are opt-in and must stay that way.** A default deployment advertises a
   catalog whose every tool is `readOnlyHint: true`, which is what lets a host
   auto-approve a whole investigation. Anything that mutates belongs in `WriteTools`
