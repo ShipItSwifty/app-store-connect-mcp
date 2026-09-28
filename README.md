@@ -254,6 +254,13 @@ naming the variable rather than "unknown tool".
 | `asc_submit_for_review` | `bundle_id`, `version_string?`, `automatic_release?`, `phased_release?` | **submits the app to App Review** — irreversible and public |
 | `asc_create_analytics_report_request` | `app_id?` / `bundle_id?`, `access_type?` | creates the analytics report request that makes `asc_get_analytics_report` return anything |
 
+**Structured output.** The aggregating tools — `asc_ci_failure_report`,
+`asc_ci_failure_report_with_logs`, `asc_ci_latest_failure`, `asc_submission_status`,
+and `asc_rate_limit_status` — advertise an MCP `outputSchema` and return their payload
+as `structuredContent` alongside the usual JSON text block, so a host can validate the
+result and address fields directly. The other tools return text only: their payloads
+are Apple's list envelopes, whose shape follows Apple rather than this package.
+
 **Performance.** One API client is shared for the life of the server process, so the
 signed JWT is reused (re-signed only near expiry), bundle-id lookups are cached, and
 the rate-limit position carries across calls — `asc_rate_limit_status` answers from

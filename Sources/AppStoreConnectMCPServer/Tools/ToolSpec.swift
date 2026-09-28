@@ -11,6 +11,16 @@ extension Tool.Content {
     static func plainText(_ text: String) -> Self {
         .text(text: text, annotations: nil, _meta: nil)
     }
+
+    var isText: Bool {
+        if case .text = self { return true }
+        return false
+    }
+
+    var text: String? {
+        guard case .text(let text, _, _) = self else { return nil }
+        return text
+    }
 }
 
 /// One argument of a ``ToolSpec``, from which the JSON Schema is generated.
@@ -98,6 +108,9 @@ struct ToolSpec: Sendable {
     /// what lets a client auto-approve a call instead of prompting for every lookup —
     /// worth carrying, since an investigation is dozens of calls deep.
     let isReadOnly: Bool
+    /// JSON Schema of the result, for tools whose payload is one of this package's own
+    /// report models. When set, the tool advertises it as `outputSchema` and its result
+    /// carries the payload as `structuredContent` too. See ``OutputSchemas``.
     let outputSchema: Value?
     let handler: Handler
 
@@ -119,13 +132,16 @@ struct ToolSpec: Sendable {
 
     /// The MCP tool advertised to the host, with its schema generated from ``arguments``.
     var tool: Tool {
-        var properties: [String: Value] = [:]
-        for argument in arguments {
-            properties[argument.name] = .object([
-                "type": .string(argument.kind.rawValue),
-                "description": .string(argument.description),
-            ])
-        }
+        let properties: [String: Value] = Dictionary(
+            uniqueKeysWithValues: arguments.map { argument in
+                (
+                    argument.name,
+                    .object([
+                        "type": .string(argument.kind.rawValue),
+                        "description": .string(argument.description),
+                    ])
+                )
+            })
 
         var schema: [String: Value] = [
             "type": .string("object"),
@@ -149,5 +165,27 @@ struct ToolSpec: Sendable {
             ),
             outputSchema: outputSchema
         )
+    }
+}
+
+extension CallTool.Result {
+    /// This result with its JSON payload also attached as `structuredContent`.
+    ///
+    /// The text block stays, as the spec asks, for hosts that only read `content`.
+    /// Only a JSON object qualifies — `structuredContent` must be one — and an error
+    /// result is returned unchanged.
+    func addingStructuredContent() -> CallTool.Result {
+        guard isError != true else { return self }
+        let structured =
+            content
+            .filter(\.isText)
+            .compactMap(\.text)
+            .compactMap { try? JSONDecoder().decode(Value.self, from: Data($0.utf8)) }
+            .filter { $0.objectValue != nil }
+            .first
+        guard let structured else { return self }
+        // `Optional.some` pins the non-throwing overload; a bare `Value` would match
+        // the SDK's generic `Codable` initializer, which throws.
+        return CallTool.Result(content: content, structuredContent: Optional.some(structured), isError: isError, _meta: _meta)
     }
 }

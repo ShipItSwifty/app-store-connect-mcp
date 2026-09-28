@@ -85,6 +85,11 @@ coverage climbs, don't lower it without a reason.
   `DiagnosticsTools`, `ReviewTools`, `ReportingTools` and — only when
   `ASC_ENABLE_WRITES` is set — `WriteTools`. Several files, still one catalog and no
   separate `switch` to update. Adding a tool means adding one spec.
+- **`outputSchema` is a contract.** A tool with one (`ToolSpec.outputSchema`, schemas in
+  `Tools/OutputSchemas.swift`) gets its JSON copied into `structuredContent`, and hosts
+  that validate will reject a result that doesn't match. Change the model, change the
+  schema: `StructuredOutputTests`' `schemaViolations` runs over the mocked report tests.
+  Only non-optional stored properties may be `required` (nil optionals are omitted).
 - `Sources/AppStoreConnectMCPServer/Resources/ServerResources.swift` — MCP resources.
   Each `ResourceSpec` names a URI (template) and the read-only tool that serves it; URI
   placeholders are that tool's argument names. `ServerResourcesTests` fails if a

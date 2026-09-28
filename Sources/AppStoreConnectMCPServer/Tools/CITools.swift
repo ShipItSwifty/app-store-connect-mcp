@@ -149,7 +149,7 @@ enum CITools {
                 .string("build_run_id", "Xcode Cloud build run id.", required: true),
                 .string("workflow_name", "Optional workflow name to embed for context."),
             ],
-            outputSchema: reportOutputSchema
+            outputSchema: OutputSchemas.failureReport
         ) { args, makeClient in
             try json(
                 await makeClient().ciFailureReport(
@@ -170,7 +170,7 @@ enum CITools {
                 .string("build_run_id", "Xcode Cloud build run id.", required: true),
                 .string("workflow_name", "Optional workflow name to embed for context."),
             ],
-            outputSchema: failureReportWithLogsOutputSchema
+            outputSchema: OutputSchemas.failureReportWithLogs
         ) { args, makeClient in
             try json(
                 await makeClient().ciFailureReportWithLogs(
@@ -199,7 +199,7 @@ enum CITools {
                     "App Store Connect app id — scan every workflow of every Xcode Cloud product of this app."
                 ),
             ],
-            outputSchema: latestFailureOutputSchema
+            outputSchema: OutputSchemas.latestFailure
         ) { args, makeClient in
             try json(
                 await makeClient().ciLatestFailureReport(
@@ -240,7 +240,7 @@ enum CITools {
             arguments: [
                 .string("bundle_id", "The app's bundle identifier (e.g. com.example.app).", required: true)
             ],
-            outputSchema: submissionStatusOutputSchema
+            outputSchema: OutputSchemas.submissionStatus
         ) { args, makeClient in
             let service = AppStoreSubmissionService(client: try makeClient())
             return try json(await service.status(bundleID: args.require("bundle_id")))
@@ -312,7 +312,8 @@ enum CITools {
             }
             return .init(content: [.plainText("Unknown tool: \(name)")], isError: true)
         }
-        return try await spec.handler(ToolArguments(arguments), makeClient)
+        let result = try await spec.handler(ToolArguments(arguments), makeClient)
+        return spec.outputSchema == nil ? result : result.addingStructuredContent()
     }
 
     // MARK: - Helpers
@@ -378,12 +379,7 @@ enum CITools {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         let data = try encoder.encode(value)
-        let structuredContent = try JSONDecoder().decode(Value.self, from: data)
-        return try CallTool.Result(
-            content: [.plainText(String(decoding: data, as: UTF8.self))],
-            structuredContent: structuredContent,
-            isError: false
-        )
+        return .init(content: [.plainText(String(decoding: data, as: UTF8.self))], isError: false)
     }
 
     // MARK: - Output schemas
