@@ -9,10 +9,17 @@ import Testing
 @Suite("IPAUploadService", .serialized)
 struct IPAUploadServiceTests {
     private func makeTempIPA() throws -> URL {
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("ascmcp-\(UUID().uuidString).ipa")
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ascmcp-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let url = directory.appendingPathComponent("App.ipa")
         try Data("not a real ipa".utf8).write(to: url)
         return url
+    }
+
+    /// Give only the mock shell a simulated home; never stage test keys in the user's home.
+    private func mockShell(for ipa: URL, executor: any CommandExecutor) -> ShellContext {
+        ShellContext(executor: executor, environment: ["HOME": ipa.deletingLastPathComponent().path])
     }
 
     private let credentials = ASCCredentials(
@@ -46,9 +53,10 @@ struct IPAUploadServiceTests {
     @Test("altool non-zero exit throws uploadFailed")
     func altoolFailure() async throws {
         let ipa = try makeTempIPA()
-        defer { try? FileManager.default.removeItem(at: ipa) }
+        defer { try? FileManager.default.removeItem(at: ipa.deletingLastPathComponent()) }
 
-        let shell = ShellContext(
+        let shell = mockShell(
+            for: ipa,
             executor: MockExecutor { command, _ in
                 if command.description.contains("altool") {
                     throw ShellError.exitFailure(
@@ -73,9 +81,9 @@ struct IPAUploadServiceTests {
     @Test("altool success with resolveBuildID false returns a result")
     func altoolSuccessNoResolve() async throws {
         let ipa = try makeTempIPA()
-        defer { try? FileManager.default.removeItem(at: ipa) }
+        defer { try? FileManager.default.removeItem(at: ipa.deletingLastPathComponent()) }
 
-        let shell = ShellContext(executor: MockExecutor { _, _ in ShellOutput(stdout: "{}", stderr: "", exitCode: 0) })
+        let shell = mockShell(for: ipa, executor: MockExecutor { _, _ in ShellOutput(stdout: "{}", stderr: "", exitCode: 0) })
 
         let result = try await IPAUploadService(client: client()).uploadIPA(
             at: ipa,
@@ -91,9 +99,10 @@ struct IPAUploadServiceTests {
     @Test("altool success with resolveBuildID true resolves the app and polls for the build")
     func altoolSuccessResolvesBuild() async throws {
         let ipa = try makeTempIPA()
-        defer { try? FileManager.default.removeItem(at: ipa) }
+        defer { try? FileManager.default.removeItem(at: ipa.deletingLastPathComponent()) }
 
-        let shell = ShellContext(
+        let shell = mockShell(
+            for: ipa,
             executor: MockExecutor { command, _ in
                 if command.description.contains("plutil") {
                     return ShellOutput(stdout: "142\n", stderr: "", exitCode: 0)
@@ -120,9 +129,10 @@ struct IPAUploadServiceTests {
     @Test("resolveBuildID true throws when the build never appears in App Store Connect")
     func pollExhaustsWithoutBuild() async throws {
         let ipa = try makeTempIPA()
-        defer { try? FileManager.default.removeItem(at: ipa) }
+        defer { try? FileManager.default.removeItem(at: ipa.deletingLastPathComponent()) }
 
-        let shell = ShellContext(
+        let shell = mockShell(
+            for: ipa,
             executor: MockExecutor { command, _ in
                 if command.description.contains("plutil") {
                     return ShellOutput(stdout: "142\n", stderr: "", exitCode: 0)

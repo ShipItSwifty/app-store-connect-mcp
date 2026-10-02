@@ -40,6 +40,13 @@ public enum MCPError: Swift.Error, Sendable {
     // MCP specific errors
     case urlElicitationRequired(message: String, elicitations: [URLElicitationInfo])  // -32042
 
+    /// The request headers do not mirror the JSON-RPC body (-32020).
+    case headerMismatch(String)
+    /// A modern request requires capabilities absent from its metadata (-32021).
+    case missingRequiredClientCapability(requiredCapabilities: [String: Value])
+    /// A modern request uses an unsupported protocol revision (-32022).
+    case unsupportedProtocolVersion(requested: String, supported: [String])
+
     // Transport specific errors
     case connectionClosed
     case transportError(Swift.Error)
@@ -54,6 +61,9 @@ public enum MCPError: Swift.Error, Sendable {
         case .internalError: return -32603
         case .serverError(let code, _): return code
         case .urlElicitationRequired: return -32042
+        case .headerMismatch: return -32020
+        case .missingRequiredClientCapability: return -32021
+        case .unsupportedProtocolVersion: return -32022
         case .connectionClosed: return -32000
         case .transportError: return -32001
         }
@@ -93,6 +103,12 @@ extension MCPError: LocalizedError {
             return "Server error: \(message)"
         case .urlElicitationRequired(let message, _):
             return "URL elicitation required: \(message)"
+        case .headerMismatch(let message):
+            return "Header mismatch: \(message)"
+        case .missingRequiredClientCapability:
+            return "Missing required client capability"
+        case .unsupportedProtocolVersion:
+            return "Unsupported protocol version"
         case .connectionClosed:
             return "Connection closed"
         case .transportError(let error):
@@ -116,6 +132,12 @@ extension MCPError: LocalizedError {
             return "Server-defined error occurred"
         case .urlElicitationRequired:
             return "The server requires user authentication or input via external URL"
+        case .headerMismatch:
+            return "HTTP headers must match their request body fields"
+        case .missingRequiredClientCapability:
+            return "Required capabilities were not declared on this request"
+        case .unsupportedProtocolVersion:
+            return "The requested protocol revision is not supported"
         case .connectionClosed:
             return "The connection to the server was closed"
         case .transportError(let error):
@@ -203,6 +225,17 @@ extension MCPError: Codable {
                 ["elicitations": Value.array(elicitationsData.map { .object($0) })],
                 forKey: .data
             )
+        case .headerMismatch:
+            try container.encode(errorDescription, forKey: .message)
+        case .missingRequiredClientCapability(let required):
+            try container.encode(errorDescription, forKey: .message)
+            try container.encode(["requiredCapabilities": required], forKey: .data)
+        case .unsupportedProtocolVersion(let requested, let supported):
+            try container.encode(errorDescription, forKey: .message)
+            try container.encode([
+                "requested": Value.string(requested),
+                "supported": .array(supported.map(Value.string)),
+            ], forKey: .data)
         case .connectionClosed:
             try container.encode(errorDescription ?? "Unknown error", forKey: .message)
         case .transportError(let error):
@@ -257,6 +290,16 @@ extension MCPError: Codable {
                 }
             }
             self = .urlElicitationRequired(message: message, elicitations: elicitations)
+        case -32020:
+            self = .headerMismatch(message.hasPrefix("Header mismatch: ") ? String(message.dropFirst(17)) : message)
+        case -32021:
+            let required = data?["requiredCapabilities"]?.objectValue ?? [:]
+            self = .missingRequiredClientCapability(requiredCapabilities: required)
+        case -32022:
+            self = .unsupportedProtocolVersion(
+                requested: data?["requested"]?.stringValue ?? "",
+                supported: data?["supported"]?.arrayValue?.compactMap(\.stringValue) ?? []
+            )
         case -32000:
             self = .connectionClosed
         case -32001:
@@ -293,6 +336,10 @@ extension MCPError: Equatable {
             return c1 == c2 && m1 == m2
         case (.urlElicitationRequired(let m1, let e1), .urlElicitationRequired(let m2, let e2)):
             return m1 == m2 && e1 == e2
+        case (.headerMismatch(let a), .headerMismatch(let b)): return a == b
+        case (.missingRequiredClientCapability(let a), .missingRequiredClientCapability(let b)): return a == b
+        case (.unsupportedProtocolVersion(let a, let av), .unsupportedProtocolVersion(let b, let bv)):
+            return a == b && av == bv
         case (.connectionClosed, .connectionClosed): return true
         case (.transportError(let a), .transportError(let b)):
             return a.localizedDescription == b.localizedDescription
@@ -322,6 +369,13 @@ extension MCPError: Hashable {
         case .urlElicitationRequired(let message, let elicitations):
             hasher.combine(message)
             hasher.combine(elicitations)
+        case .headerMismatch(let message):
+            hasher.combine(message)
+        case .missingRequiredClientCapability(let required):
+            hasher.combine(required)
+        case .unsupportedProtocolVersion(let requested, let supported):
+            hasher.combine(requested)
+            hasher.combine(supported)
         case .connectionClosed:
             break
         case .transportError(let error):

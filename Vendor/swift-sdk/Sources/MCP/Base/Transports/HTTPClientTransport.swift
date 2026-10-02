@@ -112,7 +112,7 @@ public actor HTTPClientTransport: Transport {
         configuration: URLSessionConfiguration = .default,
         streaming: Bool = true,
         sseInitializationTimeout: TimeInterval = 10,
-        protocolVersion: String = Version.latest,
+        protocolVersion: String = Version.latestLegacy,
         authorizer: (any HTTPClientAuthorizer)? = nil,
         requestModifier: @escaping (URLRequest) -> URLRequest = { $0 },
         logger: Logger? = nil
@@ -134,7 +134,7 @@ public actor HTTPClientTransport: Transport {
         session: URLSession,
         streaming: Bool = false,
         sseInitializationTimeout: TimeInterval = 10,
-        protocolVersion: String = Version.latest,
+        protocolVersion: String = Version.latestLegacy,
         authorizer: (any HTTPClientAuthorizer)? = nil,
         requestModifier: @escaping (URLRequest) -> URLRequest = { $0 },
         logger: Logger? = nil

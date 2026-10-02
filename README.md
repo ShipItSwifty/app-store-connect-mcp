@@ -139,7 +139,19 @@ Then ask your agent things like:
 |---|---|
 | **Tools** | 35 read-only `asc_*` tools (below), all advertised with `readOnlyHint: true`, plus 5 write tools only when writes are enabled. |
 | **Prompts** | Five investigation playbooks (below) — in Claude Code they appear as `/mcp__app-store-connect__<name>`. |
-| **Instructions** | A short guide sent in the `initialize` result: where to start, which tool collapses a multi-call walk into one, and the rate-limit budget. Hosts that support it put this in the model's context before the first call. |
+| **Instructions** | A short guide sent by `server/discover` (MCP 2) or `initialize` (legacy): where to start, which tool collapses a multi-call walk into one, and the rate-limit budget. |
+
+### Claude plugin
+
+This repository is a local Claude Code plugin with a configurable stdio server
+and skills for CI triage, review readiness, and release preparation. From a
+checkout, run `claude plugin validate .` and `claude --plugin-dir .`, then configure
+your installed binary and App Store Connect key in the plugin settings. Writes
+are disabled by default.
+
+The server supports stateless MCP `2026-07-28` requests and legacy initialization.
+The local plugin targets Claude Code; Claude chat needs a separately hosted
+connector. See [plugin setup, protocol details, and directory submission](guides/claude-plugin.md).
 
 ### Install
 
@@ -460,8 +472,9 @@ raw config):
 | Write tool answers "set ASC_ENABLE_WRITES" | Working as intended — writes are opt-in. |
 | Calls slow down and a ⚠️ rate-limit block appears | The key is near Apple's hourly limit; requests pause at 90%. Narrow the investigation or wait. |
 
-Check the binary by hand: `app-store-connect-mcp --version`, or pipe an `initialize` +
-`tools/list` handshake into it as CI's smoke test does (`.github/workflows/ci.yml`).
+Check the binary by hand: `app-store-connect-mcp --version`, or run
+`python3 scripts/smoke-mcp.py /absolute/path/app-store-connect-mcp` to exercise both
+modern discovery and the legacy handshake, as CI does.
 
 ## Development
 

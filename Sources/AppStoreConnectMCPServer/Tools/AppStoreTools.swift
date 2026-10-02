@@ -277,7 +277,8 @@ enum AppStoreTools {
             name: "asc_api_get",
             description: """
                 Escape hatch: perform an arbitrary authenticated GET against the App Store \
-                Connect API and return Apple's JSON verbatim. Use this for resources the typed \
+                Connect API (https://developer.apple.com/documentation/appstoreconnectapi) \
+                and return Apple's JSON verbatim. Use this for resources the typed \
                 tools above don't cover — appInfos, appPrices, inAppPurchases, subscriptions, \
                 appEvents, users, devices, certificates, profiles, salesReports metadata, and \
                 anything Apple adds later. Give a path such as \

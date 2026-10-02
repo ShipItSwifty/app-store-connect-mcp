@@ -15,9 +15,8 @@ public actor Server {
         /// The strict configuration.
         public static let strict = Configuration(strict: true)
 
-        /// When strict mode is enabled, the server:
-        /// - Requires clients to send an initialize request before any other requests
-        /// - Rejects all requests from uninitialized clients with a protocol error
+        /// Strict legacy clients must initialize before sending ordinary requests.
+        /// Modern requests instead require their own version and capabilities metadata.
         ///
         /// While the MCP specification requires clients to initialize the connection
         /// before sending other requests, some implementations may not follow this.
@@ -116,19 +115,23 @@ public actor Server {
         public var resources: Resources?
         /// Tools capabilities
         public var tools: Tools?
+        /// Optional extensions implemented by this server.
+        public var extensions: [String: Value]?
 
         public init(
             completions: Completions? = nil,
             logging: Logging? = nil,
             prompts: Prompts? = nil,
             resources: Resources? = nil,
-            tools: Tools? = nil
+            tools: Tools? = nil,
+            extensions: [String: Value]? = nil
         ) {
             self.completions = completions
             self.logging = logging
             self.prompts = prompts
             self.resources = resources
             self.tools = tools
+            self.extensions = extensions
         }
     }
 
@@ -314,9 +317,13 @@ public actor Server {
         /// path.
         public let httpContext: HTTPRequest?
 
-        package init(id: ID, httpContext: HTTPRequest?) {
+        /// Modern metadata belongs to this dispatch, never to the connection.
+        public let protocolMetadata: ProtocolRequestMetadata?
+
+        package init(id: ID, httpContext: HTTPRequest?, protocolMetadata: ProtocolRequestMetadata? = nil) {
             self.id = id
             self.httpContext = httpContext
+            self.protocolMetadata = protocolMetadata
         }
     }
 
@@ -381,6 +388,23 @@ public actor Server {
             throw MCPError.internalError("Server connection not initialized")
         }
 
+        if let modern = Self.currentHandlerContext?.protocolMetadata {
+            switch N.name {
+            case LogMessageNotification.name:
+                guard let minimum = modern.metadata[ProtocolMetadataKey.logLevel]?.stringValue,
+                    let minimumLevel = LogLevel(rawValue: minimum),
+                    let minimumIndex = LogLevel.allCases.firstIndex(of: minimumLevel)
+                else { return }
+                let message = try JSONDecoder().decode(LogMessageNotification.Parameters.self,
+                    from: JSONEncoder().encode(notification.params))
+                guard let index = LogLevel.allCases.firstIndex(of: message.level), index >= minimumIndex else { return }
+            case ProgressNotification.name:
+                guard modern.metadata.progressToken != nil else { return }
+            default:
+                throw MCPError.methodNotFound("This notification requires a legacy connection or an implemented subscriptions/listen stream")
+            }
+        }
+
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
 
@@ -394,6 +418,9 @@ public actor Server {
             throw MCPError.internalError("Server connection not initialized")
         }
 
+        guard Self.currentHandlerContext?.protocolMetadata == nil else {
+            throw MCPError.methodNotFound("Server-initiated requests are legacy-only; modern interactions require an input_required result")
+        }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         let requestData = try encoder.encode(request)
@@ -754,7 +781,30 @@ public actor Server {
                 "id": "\(request.id)",
             ])
 
-        if configuration.strict {
+        let modern: ProtocolRequestMetadata?
+        do {
+            let modernRequest = ProtocolRequestMetadata.isModern(request.params, method: request.method)
+                || (configuration.strict && !isInitialized && request.method != Initialize.name && request.method != Ping.name)
+            modern = modernRequest ? try ProtocolRequestMetadata.parse(request.params) : nil
+            if modern != nil {
+                guard sendResponse else {
+                    throw MCPError.invalidRequest("Modern MCP does not support JSON-RPC batches")
+                }
+                let removedMethods = [Initialize.name, Ping.name, SetLoggingLevel.name, "resources/subscribe", "resources/unsubscribe"]
+                if removedMethods.contains(request.method) {
+                    throw MCPError.methodNotFound("\(request.method) is not available in the modern protocol")
+                }
+            }
+        } catch {
+            let response = AnyMethod.response(id: request.id, error: error as? MCPError ?? .invalidParams(error.localizedDescription))
+            if sendResponse {
+                try await send(response)
+                return nil
+            }
+            return response
+        }
+
+        if configuration.strict && modern == nil {
             // The client SHOULD NOT send requests other than pings
             // before the server has responded to the initialize request.
             switch request.method {
@@ -783,7 +833,7 @@ public actor Server {
         // that don't carry HTTP context (stdio, in-memory) don't conform.
         let httpContext = await (connection as? any HTTPContextProviding)?
             .httpRequestContext(for: request.id)
-        let handlerContext = HandlerContext(id: request.id, httpContext: httpContext)
+        let handlerContext = HandlerContext(id: request.id, httpContext: httpContext, protocolMetadata: modern)
 
         // Create a task to handle the request with cancellation support.
         // Set currentHandlerContext as a task local so handlers see it.
@@ -796,7 +846,7 @@ public actor Server {
 
                     // Handle request and get response
                     let response = try await handler(request)
-                    return response
+                    return modern == nil ? response : try Self.modernResponse(response, method: request.method, serverInfo: self.serverInfo)
                 } catch is CancellationError {
                     // Request was cancelled, don't send a response per MCP spec
                     await logger?.debug(
@@ -853,7 +903,7 @@ public actor Server {
 
         if configuration.strict {
             // Check initialization state unless this is an initialized notification
-            if message.method != InitializedNotification.name {
+            if message.method != InitializedNotification.name && message.method != CancelledNotification.name {
                 try checkInitialized()
             }
         }
@@ -906,6 +956,12 @@ public actor Server {
     )
         throws
     {
+        if let modern = Self.currentHandlerContext?.protocolMetadata {
+            guard modern.clientCapabilities[keyPath: keyPath] != nil else {
+                throw MCPError.missingRequiredClientCapability(requiredCapabilities: [name.lowercased(): .object([:])])
+            }
+            return
+        }
         if configuration.strict {
             guard let capabilities = clientCapabilities else {
                 throw MCPError.methodNotFound("Client capabilities not initialized")
@@ -919,7 +975,14 @@ public actor Server {
     private func registerDefaultHandlers(
         initializeHook: (@Sendable (Client.Info, Client.Capabilities) async throws -> Void)?
     ) {
-        // Initialize
+        // Modern discovery has no initialization hook or state transition.
+        withMethodHandler(Discover.self) { [weak self] _ in
+            guard let self else { throw MCPError.internalError("Server was deallocated") }
+            return Discover.Result(supportedVersions: Version.supported.sorted(by: >),
+                capabilities: await self.capabilities, instructions: self.instructions)
+        }
+
+        // Initialize (legacy revisions only)
         withMethodHandler(Initialize.self) { [weak self] params in
             guard let self = self else {
                 throw MCPError.internalError("Server was deallocated")

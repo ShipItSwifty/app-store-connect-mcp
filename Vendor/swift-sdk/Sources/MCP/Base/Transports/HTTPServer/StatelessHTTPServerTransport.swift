@@ -52,8 +52,8 @@ public actor StatelessHTTPServerTransport: Transport, HTTPContextProviding {
     /// When the server calls `send()` with a response, the matching continuation is resumed.
     private var responseWaiters: [String: CheckedContinuation<Data, any Error>] = [:]
 
-    /// Maps request ID → originating HTTP request, surfaced to handlers via
-    /// ``Server/currentHTTPContext``. Entries live only while a JSON-RPC request
+    /// Maps internal routing ID → originating HTTP request, surfaced via
+    /// ``Server/currentHandlerContext``. Entries live only while a JSON-RPC request
     /// is in flight.
     private var httpRequestContexts: [String: HTTPRequest] = [:]
 
@@ -206,41 +206,86 @@ public actor StatelessHTTPServerTransport: Transport, HTTPContextProviding {
 
         // Handle by message type
         switch messageKind {
-        case .notification, .response:
+        case .response:
+            return .error(statusCode: 400, .invalidRequest("Clients cannot POST JSON-RPC responses to a stateless server"))
+
+        case .notification:
+            if request.header(HTTPHeaderName.protocolVersion) == Version.latest {
+                return .error(statusCode: 400, .invalidRequest("Modern HTTP requests are cancelled by closing the response, not by notification"))
+            }
             // Yield to server and return 202 Accepted
             incomingContinuation.yield(body)
             return .accepted()
 
-        case .request(let id, _):
-            return await handleJSONRPCRequest(body, requestID: id, request: request)
+        case .request:
+            guard let rpc = try? JSONDecoder().decode(AnyRequest.self, from: body) else {
+                return .error(statusCode: 400, .invalidRequest("Invalid JSON-RPC request"))
+            }
+            return await handleJSONRPCRequest(rpc, request: request)
         }
     }
 
     private func handleJSONRPCRequest(
-        _ body: Data,
-        requestID: String,
+        _ rpc: AnyRequest,
         request: HTTPRequest
     ) async -> HTTPResponse {
+        // Clients choose IDs independently. Route with a transport-generated ID so
+        // concurrent clients (and string/number IDs with the same text) cannot collide.
+        let requestID = UUID().uuidString
+        let internalID = ID.string(requestID)
+        let routed = AnyRequest(id: internalID, method: rpc.method, params: rpc.params)
+        guard let body = try? JSONEncoder().encode(routed) else {
+            return .error(statusCode: 400, .invalidRequest("Cannot encode request"), requestID: rpc.id)
+        }
         httpRequestContexts[requestID] = request
-        // Yield the incoming message to the server
-        incomingContinuation.yield(body)
+        defer { httpRequestContexts.removeValue(forKey: requestID) }
 
         // Wait for the server to process and send a response
         let responseData: Data
         do {
-            responseData = try await withCheckedThrowingContinuation { continuation in
-                responseWaiters[requestID] = continuation
+            responseData = try await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation { continuation in
+                    guard !Task.isCancelled else {
+                        continuation.resume(throwing: CancellationError())
+                        return
+                    }
+                    responseWaiters[requestID] = continuation
+                    incomingContinuation.yield(body)
+                }
+            } onCancel: {
+                Task { await self.cancelRequest(requestID) }
             }
         } catch {
-            httpRequestContexts.removeValue(forKey: requestID)
             return .error(
                 statusCode: 500,
-                .internalError("Error processing request: \(error.localizedDescription)")
+                .internalError("Error processing request: \(error.localizedDescription)"),
+                requestID: rpc.id
             )
         }
 
-        httpRequestContexts.removeValue(forKey: requestID)
-        return .data(responseData, headers: [HTTPHeaderName.contentType: ContentType.json])
+        guard let response = try? JSONDecoder().decode(AnyResponse.self, from: responseData) else {
+            return .error(statusCode: 500, .internalError("Invalid server response"), requestID: rpc.id)
+        }
+        if case .failure(let error) = response.result,
+            ProtocolRequestMetadata.isModern(rpc.params, method: rpc.method),
+            [-32602, -32020, -32021, -32022].contains(error.code)
+        {
+            return .error(statusCode: 400, error, requestID: rpc.id)
+        }
+        let externalResponse = AnyResponse(id: rpc.id, result: response.result)
+        guard let data = try? JSONEncoder().encode(externalResponse) else {
+            return .error(statusCode: 500, .internalError("Cannot encode server response"), requestID: rpc.id)
+        }
+        return .data(data, headers: [HTTPHeaderName.contentType: ContentType.json])
+    }
+
+    private func cancelRequest(_ requestID: String) {
+        guard let waiter = responseWaiters.removeValue(forKey: requestID) else { return }
+        waiter.resume(throwing: CancellationError())
+        let notification = CancelledNotification.message(.init(requestId: .string(requestID), reason: "HTTP request closed"))
+        if let data = try? JSONEncoder().encode(notification) {
+            incomingContinuation.yield(data)
+        }
     }
 
     // MARK: - HTTPContextProviding

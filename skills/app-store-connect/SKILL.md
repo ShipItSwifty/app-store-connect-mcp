@@ -12,7 +12,7 @@ every call spends the key's hourly rate limit.
 
 ## Before you start
 
-- If no `asc_*` tools are available, the server isn't registered. Point the user at
+- If no `asc_*` tools are available in a plugin session, check `/mcp` and the plugin's executable/key settings first. For a manual installation, point the user at
   `scripts/install-mcp.sh` or the README's "Register with a client" section; don't
   improvise API calls with curl.
 - A `403 FORBIDDEN` on `asc_ci_*` tools while app tools work means the key lacks an

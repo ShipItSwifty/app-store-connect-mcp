@@ -93,7 +93,7 @@ public enum HTTPResponse: Sendable {
 
     /// Error response with a JSON-RPC error body.
     /// The status code, headers, and body are derived automatically.
-    case error(statusCode: Int, MCPError, sessionID: String? = nil, extraHeaders: [String: String] = [:])
+    case error(statusCode: Int, MCPError, sessionID: String? = nil, extraHeaders: [String: String] = [:], requestID: ID? = nil)
 
     // MARK: - Computed Properties
 
@@ -101,7 +101,7 @@ public enum HTTPResponse: Sendable {
         switch self {
         case .accepted: 202
         case .ok, .data, .stream: 200
-        case .error(let code, _, _, _): code
+        case .error(let code, _, _, _, _): code
         }
     }
 
@@ -109,7 +109,7 @@ public enum HTTPResponse: Sendable {
         switch self {
         case .accepted(let headers), .ok(let headers), .data(_, let headers), .stream(_, let headers):
             return headers
-        case .error(_, _, let sessionID, let extraHeaders):
+        case .error(_, _, let sessionID, let extraHeaders, _):
             var headers: [String: String] = [HTTPHeaderName.contentType: ContentType.json]
             if let sessionID { headers[HTTPHeaderName.sessionID] = sessionID }
             headers.merge(extraHeaders) { _, new in new }
@@ -124,16 +124,14 @@ public enum HTTPResponse: Sendable {
             return nil
         case .data(let data, _):
             return data
-        case .error(_, let error, _, _):
-            let errorBody: [String: Any] = [
-                "jsonrpc": "2.0",
-                "error": [
-                    "code": error.code,
-                    "message": error.errorDescription ?? "Unknown error",
-                ],
-                "id": NSNull(),
-            ]
-            return try? JSONSerialization.data(withJSONObject: errorBody)
+        case .error(_, let error, _, _, let requestID):
+            // Preserve protocol error data (including supported/requested versions).
+            var body: [String: Value] = ["jsonrpc": .string("2.0"), "id": .null]
+            body["error"] = try? JSONDecoder().decode(Value.self, from: JSONEncoder().encode(error))
+            if let requestID {
+                body["id"] = try? JSONDecoder().decode(Value.self, from: JSONEncoder().encode(requestID))
+            }
+            return try? JSONEncoder().encode(body)
         }
     }
 }
@@ -144,6 +142,8 @@ public enum HTTPResponse: Sendable {
 public enum HTTPHeaderName {
     public static let sessionID = "MCP-Session-Id"
     public static let protocolVersion = "MCP-Protocol-Version"
+    public static let mcpMethod = "Mcp-Method"
+    public static let mcpName = "Mcp-Name"
     public static let lastEventID = "Last-Event-ID"
     public static let accept = "Accept"
     public static let contentType = "Content-Type"

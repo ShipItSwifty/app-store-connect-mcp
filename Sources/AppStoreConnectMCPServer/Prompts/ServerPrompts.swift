@@ -1,7 +1,7 @@
 import Foundation
 import MCP
 
-/// Guidance sent to the host in the `initialize` result's `instructions` field.
+/// Guidance sent in modern discovery or legacy initialization's `instructions` field.
 ///
 /// Hosts that honour it (Claude Code, Claude Desktop, …) put it in the model's context
 /// before any tool is called, so it is where the catalog-wide facts belong: where to

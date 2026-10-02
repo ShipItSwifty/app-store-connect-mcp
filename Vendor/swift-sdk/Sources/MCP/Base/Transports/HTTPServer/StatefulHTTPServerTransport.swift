@@ -218,7 +218,7 @@ public actor StatefulHTTPServerTransport: Transport, HTTPContextProviding {
             httpMethod: "POST",
             sessionID: sessionID,
             isInitializationRequest: messageKind.isInitializeRequest,
-            supportedProtocolVersions: Version.supported
+            supportedProtocolVersions: Version.legacySupported
         )
 
         // Run validation pipeline
@@ -317,7 +317,7 @@ public actor StatefulHTTPServerTransport: Transport, HTTPContextProviding {
             httpMethod: "GET",
             sessionID: sessionID,
             isInitializationRequest: false,
-            supportedProtocolVersions: Version.supported
+            supportedProtocolVersions: Version.legacySupported
         )
 
         // Run validation pipeline
@@ -344,7 +344,7 @@ public actor StatefulHTTPServerTransport: Transport, HTTPContextProviding {
         standaloneSSEContinuation = sseContinuation
 
         // Extract protocol version for priming event
-        let protocolVersion = request.header(HTTPHeaderName.protocolVersion) ?? Version.latest
+        let protocolVersion = request.header(HTTPHeaderName.protocolVersion) ?? Version.latestLegacy
 
         // Send priming event
         sendPrimingEvent(
@@ -370,7 +370,7 @@ public actor StatefulHTTPServerTransport: Transport, HTTPContextProviding {
             httpMethod: "DELETE",
             sessionID: sessionID,
             isInitializationRequest: false,
-            supportedProtocolVersions: Version.supported
+            supportedProtocolVersions: Version.legacySupported
         )
 
         if let errorResponse = validationPipeline.validate(request, context: context) {
@@ -454,7 +454,7 @@ public actor StatefulHTTPServerTransport: Transport, HTTPContextProviding {
         }
 
         // Send a new priming event so the client can resume again if disconnected
-        let protocolVersion = request.header(HTTPHeaderName.protocolVersion) ?? Version.latest
+        let protocolVersion = request.header(HTTPHeaderName.protocolVersion) ?? Version.latestLegacy
         sendPrimingEvent(
             streamID: replay.streamID,
             continuation: sseContinuation,
@@ -514,7 +514,7 @@ public actor StatefulHTTPServerTransport: Transport, HTTPContextProviding {
             return version
         }
         // For other requests, use the header
-        return request.header(HTTPHeaderName.protocolVersion) ?? Version.latest
+        return request.header(HTTPHeaderName.protocolVersion) ?? Version.latestLegacy
     }
 
     // MARK: - Session Helpers

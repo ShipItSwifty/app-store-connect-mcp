@@ -33,15 +33,30 @@ struct AppStoreConnectMCP {
         var log = Logger(label: "app-store-connect-mcp")
         log.logLevel = .info
 
+        let server = await makeServer()
+
+        let transport = StdioTransport(logger: log)
+        try await server.start(transport: transport)
+        log.info("app-store-connect-mcp ready on stdio")
+
+        // Blocks while the transport runs the stdio read loop, and returns once the
+        // client closes it — so the process exits with its host instead of lingering.
+        await server.waitUntilCompleted()
+    }
+
+    /// Shared registration for the executable and wire-protocol checks.
+    static func makeServer(makeClient: @escaping CITools.ClientProvider = CITools.defaultClient) async -> Server {
         let server = Server(
             name: "app-store-connect-mcp",
             version: ASCMCPVersion.current,
+            title: "App Store Connect",
             instructions: ServerInstructions.text,
             capabilities: .init(
                 prompts: .init(listChanged: false),
                 resources: .init(subscribe: false, listChanged: false),
                 tools: .init(listChanged: false)
-            )
+            ),
+            configuration: .strict
         )
 
         await server.withMethodHandler(ListTools.self) { _ in
@@ -57,7 +72,7 @@ struct AppStoreConnectMCP {
         }
 
         await server.withMethodHandler(ReadResource.self) { params in
-            try await ServerResources.read(uri: params.uri)
+            try await ServerResources.read(uri: params.uri, makeClient: makeClient)
         }
         await server.withMethodHandler(ListPrompts.self) { _ in
             .init(prompts: ServerPrompts.all)
@@ -69,7 +84,7 @@ struct AppStoreConnectMCP {
 
         await server.withMethodHandler(CallTool.self) { params in
             do {
-                return try await CITools.call(name: params.name, arguments: params.arguments ?? [:])
+                return try await CITools.call(name: params.name, arguments: params.arguments ?? [:], makeClient: makeClient)
             } catch let error as ASCError {
                 return .init(content: [.plainText("App Store Connect error: \(error.localizedDescription)")], isError: true)
             } catch {
@@ -77,13 +92,7 @@ struct AppStoreConnectMCP {
             }
         }
 
-        let transport = StdioTransport(logger: log)
-        try await server.start(transport: transport)
-        log.info("app-store-connect-mcp ready on stdio")
-
-        // Blocks while the transport runs the stdio read loop, and returns once the
-        // client closes it — so the process exits with its host instead of lingering.
-        await server.waitUntilCompleted()
+        return server
     }
 
     static let usage = """

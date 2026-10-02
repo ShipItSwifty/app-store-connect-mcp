@@ -186,7 +186,12 @@ final class TypedRequestHandler<M: Method>: RequestHandlerBox, @unchecked Sendab
 
         // Create a concrete request from the type-erased one
         let data = try encoder.encode(request)
-        let request = try decoder.decode(Request<M>.self, from: data)
+        let request: Request<M>
+        do {
+            request = try decoder.decode(Request<M>.self, from: data)
+        } catch {
+            throw MCPError.invalidParams("Invalid parameters for \(M.name): \(error.localizedDescription)")
+        }
 
         // Handle with concrete type
         let response = try await _handle(request)

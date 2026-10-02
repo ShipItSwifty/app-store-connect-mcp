@@ -166,6 +166,9 @@ public struct ProtocolVersionValidator: HTTPRequestValidator {
     public init() {}
 
     public func validate(_ request: HTTPRequest, context: HTTPValidationContext) -> HTTPResponse? {
+        if let modernError = ModernHTTPRequestValidator().validate(request, context: context) {
+            return modernError
+        }
         // Skip for initialization requests (version is in the body, not the header)
         guard !context.isInitializationRequest else { return nil }
 

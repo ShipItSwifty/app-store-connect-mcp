@@ -10,3 +10,4 @@ Package.resolved.bak
 .claude/settings.local.json
 # Locally generated DocC output (CI publishes it to Pages instead).
 /docs
+*.profraw

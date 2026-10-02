@@ -102,6 +102,7 @@ struct ToolSpec: Sendable {
     typealias Handler = @Sendable (ToolArguments, CITools.ClientProvider) async throws -> CallTool.Result
 
     let name: String
+    let title: String
     let description: String
     let arguments: [ToolArgument]
     /// Whether the tool only reads. Advertised to the host as `readOnlyHint`, which is
@@ -118,11 +119,15 @@ struct ToolSpec: Sendable {
         name: String,
         description: String,
         arguments: [ToolArgument] = [],
+        title: String? = nil,
         isReadOnly: Bool = true,
         outputSchema: Value? = nil,
         handler: @escaping Handler
     ) {
         self.name = name
+        let words = name.replacingOccurrences(of: "asc_", with: "").split(separator: "_")
+        let labels = ["ci": "Xcode Cloud", "api": "API", "testflight": "TestFlight", "whats": "What's"]
+        self.title = title ?? words.map { labels[String($0)] ?? $0.capitalized }.joined(separator: " ")
         self.description = description
         self.arguments = arguments
         self.isReadOnly = isReadOnly
@@ -154,9 +159,11 @@ struct ToolSpec: Sendable {
 
         return Tool(
             name: name,
+            title: title,
             description: description,
             inputSchema: .object(schema),
             annotations: .init(
+                title: title,
                 readOnlyHint: isReadOnly,
                 destructiveHint: !isReadOnly,
                 idempotentHint: isReadOnly,

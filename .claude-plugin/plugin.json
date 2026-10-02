@@ -1,0 +1,52 @@
+{
+  "name": "app-store-connect",
+  "displayName": "App Store Connect",
+  "version": "0.1.0",
+  "description": "Investigate Xcode Cloud failures, check App Store review readiness, and prepare releases using your App Store Connect API key.",
+  "author": { "name": "Mani Ramezan", "url": "https://github.com/maniramezan" },
+  "homepage": "https://shipitswifty.github.io/app-store-connect-mcp/",
+  "repository": "https://github.com/ShipItSwifty/app-store-connect-mcp",
+  "license": "MIT",
+  "keywords": ["app-store-connect", "xcode-cloud", "testflight", "swift"],
+  "userConfig": {
+    "binary_path": {
+      "type": "file",
+      "title": "MCP server executable",
+      "description": "Absolute path to your installed app-store-connect-mcp executable. Install or build it before enabling the plugin.",
+      "required": true
+    },
+    "key_id": {
+      "type": "string",
+      "title": "App Store Connect key ID",
+      "description": "Key ID of your App Store Connect Team API key.",
+      "required": true,
+      "sensitive": true
+    },
+    "issuer_id": {
+      "type": "string",
+      "title": "App Store Connect issuer ID",
+      "description": "Issuer ID belonging to the same Team API key.",
+      "required": true,
+      "sensitive": true
+    },
+    "private_key_path": {
+      "type": "file",
+      "title": "Private key file",
+      "description": "Absolute path to the matching AuthKey .p8 file on this computer. The plugin does not copy or upload the file.",
+      "required": true,
+      "sensitive": true
+    },
+    "vendor_number": {
+      "type": "string",
+      "title": "Sales report vendor number",
+      "description": "Optional default Apple vendor number for sales reports.",
+      "default": ""
+    },
+    "enable_writes": {
+      "type": "boolean",
+      "title": "Enable write tools",
+      "description": "Allow tools for starting builds, changing release metadata, submitting for review, and requesting analytics reports.",
+      "default": false
+    }
+  }
+}
