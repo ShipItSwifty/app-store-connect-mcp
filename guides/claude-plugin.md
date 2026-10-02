@@ -7,7 +7,15 @@ and release preparation workflows.
 
 ## Try the plugin
 
-Install the server as described in the [main README](../README.md), or build the
+Install the server with Homebrew, then find its absolute path for the plugin's
+**MCP server executable** setting:
+
+```sh
+brew install ShipItSwifty/tap/app-store-connect-mcp
+which app-store-connect-mcp   # e.g. /opt/homebrew/bin/app-store-connect-mcp
+```
+
+Other install options are in the [main README](../README.md), or you can build the
 binary from this checkout. Use this checkout's binary to try the MCP 2 support
 before a release containing it has been published:
 
