@@ -179,6 +179,10 @@ struct ModernProtocolTests {
             }
             let missing = try await wire.call("tools/list", modern: false)
             #expect(missing["error"]?.objectValue?["code"] == .int(-32_602))
+            // Before any handshake the error names both ways forward, not just the modern one.
+            let message = try #require(missing["error"]?.objectValue?["message"]?.stringValue)
+            #expect(message.contains("send initialize first"))
+            #expect(message.contains("params._meta"))
             let malformed = try await wire.call("tools/call", params: ["name": .int(7)])
             #expect(malformed["error"]?.objectValue?["code"] == .int(-32_602))
             // Processing continues after errors.

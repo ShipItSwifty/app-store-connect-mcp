@@ -783,9 +783,21 @@ public actor Server {
 
         let modern: ProtocolRequestMetadata?
         do {
-            let modernRequest = ProtocolRequestMetadata.isModern(request.params, method: request.method)
-                || (configuration.strict && !isInitialized && request.method != Initialize.name && request.method != Ping.name)
-            modern = modernRequest ? try ProtocolRequestMetadata.parse(request.params) : nil
+            let declaredModern = ProtocolRequestMetadata.isModern(request.params, method: request.method)
+            let beforeInitialize =
+                configuration.strict && !isInitialized && request.method != Initialize.name && request.method != Ping.name
+            if declaredModern || beforeInitialize {
+                do {
+                    modern = try ProtocolRequestMetadata.parse(request.params)
+                } catch where !declaredModern {
+                    // No modern metadata and no handshake: say how to proceed in either era.
+                    throw MCPError.invalidParams(
+                        "Server not initialized: send initialize first, or include protocolVersion and clientCapabilities in params._meta (2026-07-28)"
+                    )
+                }
+            } else {
+                modern = nil
+            }
             if modern != nil {
                 guard sendResponse else {
                     throw MCPError.invalidRequest("Modern MCP does not support JSON-RPC batches")

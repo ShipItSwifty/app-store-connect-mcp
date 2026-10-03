@@ -30,9 +30,10 @@ swift build
 swift test --enable-code-coverage --no-parallel
 MIN_LINE_COVERAGE=85 scripts/coverage-gate.sh
 xcrun swift-format lint --recursive --strict --configuration .swift-format Sources Tests
+python3 scripts/check-plugin.py
 ```
 
-CI runs all four plus a Linux build. The coverage floor is a ratchet: raise it as
+CI runs all five plus a Linux build. The coverage floor is a ratchet: raise it as
 coverage climbs, don't lower it without a reason.
 
 ## Things that will bite you

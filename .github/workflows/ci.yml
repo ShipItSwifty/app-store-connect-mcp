@@ -57,6 +57,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-spm-ci-
 
+      - name: Check Claude plugin files
+        run: python3 scripts/check-plugin.py
+
       - name: Resolve dependencies
         run: swift package resolve
 
