@@ -57,6 +57,9 @@ public actor StatelessHTTPServerTransport: Transport, HTTPContextProviding {
     /// is in flight.
     private var httpRequestContexts: [String: HTTPRequest] = [:]
 
+    /// Original IDs for legacy requests, whose cancellation notifications carry client IDs.
+    private var legacyRequestIDs: [String: ID] = [:]
+
     // MARK: - Init
 
     /// Creates a new stateless HTTP server transport.
@@ -213,6 +216,22 @@ public actor StatelessHTTPServerTransport: Transport, HTTPContextProviding {
             if request.header(HTTPHeaderName.protocolVersion) == Version.latest {
                 return .error(statusCode: 400, .invalidRequest("Modern HTTP requests are cancelled by closing the response, not by notification"))
             }
+            if let notification = try? JSONDecoder().decode(Message<CancelledNotification>.self, from: body),
+                notification.method == CancelledNotification.name,
+                let externalID = notification.params.requestId
+            {
+                let matches = legacyRequestIDs.filter { internalID, id in
+                    guard id == externalID, let original = httpRequestContexts[internalID] else { return false }
+                    return original.header("Authorization") == request.header("Authorization")
+                        && original.header(HTTPHeaderName.sessionID) == request.header(HTTPHeaderName.sessionID)
+                }
+                // Without a unique caller-scoped match, cancellation is ambiguous.
+                // Never cancel another caller's work or all duplicate IDs.
+                if matches.count == 1, let internalID = matches.first?.key {
+                    cancelRequest(internalID, reason: notification.params.reason)
+                }
+                return .accepted()
+            }
             // Yield to server and return 202 Accepted
             incomingContinuation.yield(body)
             return .accepted()
@@ -238,7 +257,13 @@ public actor StatelessHTTPServerTransport: Transport, HTTPContextProviding {
             return .error(statusCode: 400, .invalidRequest("Cannot encode request"), requestID: rpc.id)
         }
         httpRequestContexts[requestID] = request
-        defer { httpRequestContexts.removeValue(forKey: requestID) }
+        if !ProtocolRequestMetadata.isModern(rpc.params, method: rpc.method) {
+            legacyRequestIDs[requestID] = rpc.id
+        }
+        defer {
+            httpRequestContexts.removeValue(forKey: requestID)
+            legacyRequestIDs.removeValue(forKey: requestID)
+        }
 
         // Wait for the server to process and send a response
         let responseData: Data
@@ -267,10 +292,14 @@ public actor StatelessHTTPServerTransport: Transport, HTTPContextProviding {
             return .error(statusCode: 500, .internalError("Invalid server response"), requestID: rpc.id)
         }
         if case .failure(let error) = response.result,
-            ProtocolRequestMetadata.isModern(rpc.params, method: rpc.method),
-            [-32602, -32020, -32021, -32022].contains(error.code)
+            ProtocolRequestMetadata.isModern(rpc.params, method: rpc.method)
         {
-            return .error(statusCode: 400, error, requestID: rpc.id)
+            if error.code == -32601 {
+                return .error(statusCode: 404, error, requestID: rpc.id)
+            }
+            if [-32602, -32020, -32021, -32022].contains(error.code) {
+                return .error(statusCode: 400, error, requestID: rpc.id)
+            }
         }
         let externalResponse = AnyResponse(id: rpc.id, result: response.result)
         guard let data = try? JSONEncoder().encode(externalResponse) else {
@@ -279,10 +308,10 @@ public actor StatelessHTTPServerTransport: Transport, HTTPContextProviding {
         return .data(data, headers: [HTTPHeaderName.contentType: ContentType.json])
     }
 
-    private func cancelRequest(_ requestID: String) {
+    private func cancelRequest(_ requestID: String, reason: String? = "HTTP request closed") {
         guard let waiter = responseWaiters.removeValue(forKey: requestID) else { return }
         waiter.resume(throwing: CancellationError())
-        let notification = CancelledNotification.message(.init(requestId: .string(requestID), reason: "HTTP request closed"))
+        let notification = CancelledNotification.message(.init(requestId: .string(requestID), reason: reason))
         if let data = try? JSONEncoder().encode(notification) {
             incomingContinuation.yield(data)
         }

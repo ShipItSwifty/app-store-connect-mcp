@@ -85,9 +85,13 @@ struct AppStoreConnectMCP {
         await server.withMethodHandler(CallTool.self) { params in
             do {
                 return try await CITools.call(name: params.name, arguments: params.arguments ?? [:], makeClient: makeClient)
+            } catch is CancellationError {
+                throw CancellationError()
             } catch let error as ASCError {
+                try Task.checkCancellation()
                 return .init(content: [.plainText("App Store Connect error: \(error.localizedDescription)")], isError: true)
             } catch {
+                try Task.checkCancellation()
                 return .init(content: [.plainText("Error: \(error.localizedDescription)")], isError: true)
             }
         }

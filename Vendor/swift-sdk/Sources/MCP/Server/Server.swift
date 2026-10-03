@@ -846,6 +846,7 @@ public actor Server {
 
                     // Handle request and get response
                     let response = try await handler(request)
+                    try Task.checkCancellation()
                     return modern == nil ? response : try Self.modernResponse(response, method: request.method, serverInfo: self.serverInfo)
                 } catch is CancellationError {
                     // Request was cancelled, don't send a response per MCP spec
@@ -855,6 +856,7 @@ public actor Server {
                     )
                     throw CancellationError()
                 } catch {
+                    try Task.checkCancellation()
                     let mcpError =
                         error as? MCPError ?? MCPError.internalError(error.localizedDescription)
                     return AnyMethod.response(id: request.id, error: mcpError)
@@ -872,6 +874,7 @@ public actor Server {
 
         do {
             let response = try await handlerTask.value
+            guard !handlerTask.isCancelled else { return nil }
 
             if sendResponse {
                 try await send(response)

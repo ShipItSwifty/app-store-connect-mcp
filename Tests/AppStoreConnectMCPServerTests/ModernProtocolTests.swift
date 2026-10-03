@@ -66,6 +66,41 @@ private func withWireServer(_ operation: @Sendable (WireHarness, Server) async t
 
 @Suite("Modern and legacy MCP wire protocol", .serialized)
 struct ModernProtocolTests {
+    @Test("Cancelled handlers that return a result do not emit a late stdio response")
+    func cancellationWithSwallowedError() async throws {
+        try await withWireServer { wire, server in
+            let started = AsyncStream<Void>.makeStream()
+            let cancelled = AsyncStream<Void>.makeStream()
+            await server.withMethodHandler(ContextProbe.self) { _ in
+                started.continuation.yield(())
+                do { try await Task.sleep(for: .seconds(30)) } catch {
+                    cancelled.continuation.yield(())
+                }
+                return .object([:])
+            }
+            try await wire.transport.send(requestData(ContextProbe.name))
+            try await withinDeadline {
+                var iterator = started.stream.makeAsyncIterator()
+                _ = try #require(await iterator.next())
+            }
+            try await wire.transport.send(JSONEncoder().encode(CancelledNotification.message(.init(requestId: .number(1)))))
+            try await withinDeadline {
+                var iterator = cancelled.stream.makeAsyncIterator()
+                _ = try #require(await iterator.next())
+            }
+            await server.withMethodHandler(ContextProbe.self) { _ in
+                try await Task.sleep(for: .milliseconds(30))
+                return .object([:])
+            }
+            try await wire.transport.send(requestData(ContextProbe.name, id: .int(2)))
+            let response = try await withinDeadline {
+                var iterator = wire.responses.makeAsyncIterator()
+                return try #require(await iterator.next())
+            }
+            #expect(try JSONDecoder().decode(Value.self, from: response).objectValue?["id"] == .int(2))
+        }
+    }
+
     @Test("Modern discovery is complete and does not select a legacy session")
     func discoveryAndLegacy() async throws {
         try await withWireServer { wire, _ in
@@ -225,6 +260,66 @@ private enum ContextProbe: MCP.Method {
 
 @Suite("Modern stateless HTTP", .serialized)
 struct ModernHTTPProtocolTests {
+    @Test("Unknown modern methods return HTTP 404 with the original request ID")
+    func unknownMethodStatus() async throws {
+        let transport = transport()
+        let server = Server(name: "unknown-method", version: "1", configuration: .strict)
+        try await server.start(transport: transport)
+        let request = try request("unknown/method", id: .string("client-id"))
+        let response = try await withinDeadline { await transport.handleRequest(request) }
+        await server.stop()
+        #expect(response.statusCode == 404)
+        let rpc = try JSONDecoder().decode(Value.self, from: #require(response.bodyData))
+        #expect(rpc.objectValue?["id"] == .string("client-id"))
+        #expect(rpc.objectValue?["error"]?.objectValue?["code"] == .int(-32_601))
+    }
+
+    @Test("Legacy HTTP cancellation translates client IDs and isolates authorization contexts")
+    func legacyCancellation() async throws {
+        let transport = transport()
+        let server = Server(name: "legacy-cancellation", version: "1")
+        let started = AsyncStream<Void>.makeStream()
+        let cancelled = AsyncStream<Void>.makeStream()
+        await server.withMethodHandler(ContextProbe.self) { _ in
+            started.continuation.yield(())
+            do { try await Task.sleep(for: .seconds(30)) } catch is CancellationError {
+                cancelled.continuation.yield(())
+                throw CancellationError()
+            }
+            return .object([:])
+        }
+        try await server.start(transport: transport)
+        let headers = [
+            "Host": "localhost:8080", "Accept": "application/json", "Content-Type": "application/json",
+            "MCP-Protocol-Version": "2025-11-25", "Authorization": "Bearer caller-a",
+        ]
+        let http = HTTPRequest(
+            method: "POST", headers: headers,
+            body: try requestData(ContextProbe.name, id: .string("external-id"), modern: false))
+        let call = Task { await transport.handleRequest(http) }
+        do {
+            try await withinDeadline {
+                var iterator = started.stream.makeAsyncIterator()
+                _ = try #require(await iterator.next())
+            }
+            let body = try JSONEncoder().encode(CancelledNotification.message(.init(requestId: .string("external-id"))))
+            var otherHeaders = headers
+            otherHeaders["Authorization"] = "Bearer caller-b"
+            #expect(await transport.handleRequest(HTTPRequest(method: "POST", headers: otherHeaders, body: body)).statusCode == 202)
+            #expect(await transport.handleRequest(HTTPRequest(method: "POST", headers: headers, body: body)).statusCode == 202)
+            try await withinDeadline {
+                var iterator = cancelled.stream.makeAsyncIterator()
+                _ = try #require(await iterator.next())
+            }
+            _ = try await withinDeadline { await call.value }
+            await server.stop()
+        } catch {
+            call.cancel()
+            await server.stop()
+            throw error
+        }
+    }
+
     private func transport() -> StatelessHTTPServerTransport {
         StatelessHTTPServerTransport(
             validationPipeline: StandardValidationPipeline(validators: [
