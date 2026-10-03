@@ -20,6 +20,11 @@ marketplace = load(".claude-plugin/marketplace.json")
 manifest = load("plugins/app-store-connect/.claude-plugin/plugin.json")
 mcp = load("plugins/app-store-connect/.mcp.json")
 
+with open(os.path.join(ROOT, "Sources", "AppStoreConnectMCPServer", "Entry.swift")) as handle:
+    version = re.search(r'static let current = "([^"]+)"', handle.read())
+if not version or version.group(1) != manifest["version"]:
+    errors.append("server source version must match plugin.json version")
+
 for entry in marketplace["plugins"]:
     source = os.path.normpath(os.path.join(ROOT, entry["source"]))
     if source != os.path.normpath(PLUGIN):

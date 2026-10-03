@@ -52,6 +52,13 @@ the collection is exhausted or `limit` resources have been collected. A non-nil
 
 ## Topics
 
+### Task guides
+
+- <doc:GettingStarted>
+- <doc:InvestigatingCIFailures>
+- <doc:PreparingARelease>
+- <doc:ReadingReports>
+
 ### Client and credentials
 
 - ``AppStoreConnectClient``

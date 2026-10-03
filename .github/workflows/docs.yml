@@ -1,10 +1,12 @@
 name: Documentation
 
-# Builds the AppStoreConnectKit DocC archive and publishes it to GitHub Pages.
+# Validates both library catalogs on PRs and publishes the merged site from main.
 # Enable Pages for this repo with "Source: GitHub Actions" before the first run.
 
 on:
   push:
+    branches: [main]
+  pull_request:
     branches: [main]
   workflow_dispatch:
 
@@ -12,7 +14,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: pages
+  group: docs-${{ github.event_name == 'pull_request' && github.ref || 'pages' }}
   cancel-in-progress: false
 
 jobs:
@@ -27,41 +29,17 @@ jobs:
       - name: Swift version
         run: swift --version
 
-      - name: Build DocC site
-        run: |
-          swift package --allow-writing-to-directory ./docs \
-            generate-documentation \
-            --target AppStoreConnectKit \
-            --disable-indexing \
-            --transform-for-static-hosting \
-            --hosting-base-path app-store-connect-mcp \
-            --output-path ./docs
-
-      # The DocC JS app does not navigate away from the archive root, so a visitor
-      # landing on the Pages URL would see "page not found" without this.
-      - name: Add root redirect to documentation
-        run: |
-          cat > ./docs/index.html <<'EOF'
-          <!doctype html>
-          <html>
-            <head>
-              <meta charset="utf-8">
-              <meta http-equiv="refresh" content="0; url=documentation/appstoreconnectkit">
-              <link rel="canonical" href="documentation/appstoreconnectkit">
-              <title>AppStoreConnectKit Documentation</title>
-            </head>
-            <body>
-              <p>Redirecting to <a href="documentation/appstoreconnectkit">AppStoreConnectKit documentation</a>…</p>
-            </body>
-          </html>
-          EOF
+      - name: Build and validate both DocC catalogs
+        run: scripts/build-docs.sh ./docs
 
       - name: Upload Pages artifact
+        if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v5
         with:
           path: ./docs
 
   deploy:
+    if: github.event_name != 'pull_request'
     name: Deploy to Pages
     needs: build
     runs-on: ubuntu-24.04

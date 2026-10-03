@@ -1,3 +1,4 @@
+import Crypto
 import Foundation
 import Testing
 
@@ -55,4 +56,21 @@ struct ASCCredentialsTests {
         _ = AppStoreConnectClient(credentials: creds)
         _ = AppStoreConnectClient(credentials: creds, serverURL: URL(string: "https://proxy.example"))
     }
+
+    @Test("Credentials initializer forwards a disabled retry policy")
+    func credentialsDisableRetries() async throws {
+        let requests = LockedBox(0)
+        let session = makeMockSession { _ in
+            requests.mutate { $0 += 1 }
+            return .error(statusCode: 503, body: "unavailable")
+        }
+        let credentials = ASCCredentials(
+            keyID: "KEY", issuerID: "ISSUER",
+            privateKeyPEM: P256.Signing.PrivateKey().pemRepresentation
+        )
+        let client = AppStoreConnectClient(credentials: credentials, session: session, retryPolicy: .disabled)
+        await #expect(throws: ASCError.self) { _ = try await client.apps() }
+        #expect(requests.value == 1)
+    }
+
 }

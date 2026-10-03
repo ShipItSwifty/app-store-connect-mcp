@@ -209,6 +209,7 @@ extension AppStoreConnectClient {
     ///   - category: Optional `filter[category]` — `APP_USAGE`, `APP_STORE_ENGAGEMENT`,
     ///     `COMMERCE`, `FRAMEWORK_USAGE`, `PERFORMANCE`.
     ///   - name: Optional `filter[name]`, an exact report name.
+    ///   - limit: Maximum reports to return across all pages. Defaults to 200.
     public func analyticsReports(
         requestID: String,
         category: String? = nil,

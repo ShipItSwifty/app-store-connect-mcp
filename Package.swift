@@ -15,23 +15,33 @@ let package = Package(
         .executable(name: "app-store-connect-mcp", targets: ["AppStoreConnectMCPServer"]),
     ],
     dependencies: [
-        // Blocked on swift-crypto 5.0.0: jwt-kit's own manifest has no crypto upper bound,
-        // but it pulls in apple/swift-certificates (for X509), which still hard-pins
-        // swift-crypto to "3.12.3"..<"5.0.0" as of swift-certificates 1.20.0 (2026-09) and
-        // even on its main branch — the only opt-in is SWIFT_CERTIFICATES_ALLOW_SWIFT_CRYPTO_BETA,
-        // which itself excludes the final 5.0.0 tag (upper bound is "5.0.0-beta.max" < "5.0.0").
-        // Re-attempt once swift-certificates ships crypto-5.0 support.
+        // JWTKit 5.7.1 requires Crypto 4.x even though swift-certificates now accepts 5.x.
         .package(url: "https://github.com/apple/swift-crypto", from: "4.5.2"),
         .package(url: "https://github.com/vapor/jwt-kit", .upToNextMajor(from: "5.7.1")),
-        .package(url: "https://github.com/apple/swift-log", from: "1.12.0"),
-        .package(url: "https://github.com/maniramezan/SwiftyShell.git", from: "0.5.0"),
-        // Local SDK patches provide modern server dispatch and the capability
-        // decoding fix. See Vendor/swift-sdk/README.md for scope and upstream notes.
-        .package(path: "Vendor/swift-sdk"),
+        .package(url: "https://github.com/apple/swift-log", from: "1.15.1"),
+        .package(url: "https://github.com/maniramezan/SwiftyShell.git", from: "0.7.0"),
+        // Dependencies of the vendored MCP target below.
+        .package(url: "https://github.com/apple/swift-system.git", from: "1.8.1"),
+        .package(url: "https://github.com/mattt/eventsource.git", from: "1.5.1"),
         // Documentation only; contributes no code to any product.
         .package(url: "https://github.com/apple/swift-docc-plugin", from: "1.5.0"),
     ],
     targets: [
+        // Keep the patched SDK in this package so versioned downstream dependencies
+        // resolve without an unsupported local package dependency.
+        .target(
+            name: "MCP",
+            dependencies: [
+                .product(name: "SystemPackage", package: "swift-system"),
+                .product(name: "Logging", package: "swift-log"),
+                .product(
+                    name: "EventSource",
+                    package: "eventsource",
+                    condition: .when(platforms: [.macOS, .iOS, .tvOS, .visionOS, .watchOS, .macCatalyst])
+                ),
+            ],
+            path: "Vendor/swift-sdk/Sources/MCP"
+        ),
         // Linux has no `Compression` framework; ZipArchive falls back to zlib there.
         .systemLibrary(name: "CZlib"),
         .target(
@@ -55,7 +65,7 @@ let package = Package(
             name: "AppStoreConnectMCPServer",
             dependencies: [
                 "AppStoreConnectKit",
-                .product(name: "MCP", package: "swift-sdk"),
+                "MCP",
                 .product(name: "Logging", package: "swift-log"),
             ]
         ),
@@ -79,7 +89,7 @@ let package = Package(
             dependencies: [
                 "AppStoreConnectMCPServer",
                 "AppStoreConnectKit",
-                .product(name: "MCP", package: "swift-sdk"),
+                "MCP",
             ]
         ),
     ],

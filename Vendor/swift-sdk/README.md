@@ -41,3 +41,11 @@ App Store Connect's server does not depend on those APIs.
 The reusable changes should be proposed to
 [modelcontextprotocol/swift-sdk](https://github.com/modelcontextprotocol/swift-sdk)
 with their protocol contract checks. They have not been submitted upstream.
+
+## Package integration
+
+The root package builds these sources as its internal `MCP` target. It mirrors
+this SDK's SystemPackage, Logging, and platform-conditional EventSource dependencies.
+Do not restore a `.package(path:)` dependency: SwiftPM rejects local package
+dependencies when a downstream consumer selects a semantic version of this package.
+The nested manifest remains available for standalone SDK development.

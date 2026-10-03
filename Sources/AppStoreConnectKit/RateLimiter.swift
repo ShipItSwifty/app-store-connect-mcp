@@ -1,24 +1,6 @@
 import Foundation
 import Logging
 
-/// Tracks App Store Connect API rate limits and enforces backoff.
-///
-/// Reads `X-Rate-Limit` headers from responses and delays requests
-/// when approaching the hourly threshold (default: pause at 90% usage).
-///
-/// Apple's rate limit header format:
-/// ```
-/// X-Rate-Limit: user-hour-lim:3500;user-hour-rem:2998
-/// ```
-///
-/// ## Usage
-/// ```swift
-/// let limiter = RateLimiter()
-/// // Before each API request:
-/// await limiter.throttleIfNeeded()
-/// // After each response:
-/// await limiter.update(from: responseHeaders)
-/// ```
 /// A point-in-time view of the App Store Connect hourly rate limit.
 public struct RateLimitStatus: Codable, Sendable {
     /// Requests permitted per rolling hour.
@@ -46,6 +28,24 @@ public struct RateLimitStatus: Codable, Sendable {
     }
 }
 
+/// Tracks App Store Connect API rate limits and enforces backoff.
+///
+/// Reads `X-Rate-Limit` headers from responses and delays requests
+/// when approaching the hourly threshold (default: pause at 90% usage).
+///
+/// Apple's rate limit header format:
+/// ```
+/// X-Rate-Limit: user-hour-lim:3500;user-hour-rem:2998
+/// ```
+///
+/// ## Usage
+/// ```swift
+/// let limiter = RateLimiter()
+/// // Before each API request:
+/// await limiter.throttleIfNeeded()
+/// // After each response:
+/// await limiter.update(from: responseHeaders)
+/// ```
 public actor RateLimiter {
     /// The fraction of the limit at which throttling begins (0.9 = 90% used).
     public let throttleThreshold: Double

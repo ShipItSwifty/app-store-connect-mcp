@@ -39,8 +39,9 @@ jobs:
 
       # plugin.json pins installed plugins to its version, so a tag that ships a stale value
       # would never reach users. Bump it in the commit being tagged.
-      - name: Check plugin.json version
+      - name: Check plugin and source versions
         run: |
+          python3 scripts/check-plugin.py
           actual=$(jq -r '.version' plugins/app-store-connect/.claude-plugin/plugin.json)
           if [ "${actual}" != "${RELEASE_VERSION}" ]; then
             echo "::error::plugin.json version is ${actual}; it must equal ${RELEASE_VERSION} before tagging."
@@ -68,8 +69,8 @@ jobs:
         run: swift --version
 
       # Speeds up repeated release builds: the resolved dependency checkout and
-      # the compiled build products for both arches. Keyed on the pin file so a
-      # dependency bump busts the cache.
+      # the compiled build products for both arches. Restore only an exact
+      # dependency match to avoid stale Git refs from older dependency caches.
       - name: Cache SwiftPM
         uses: actions/cache@v6
         with:
@@ -77,9 +78,7 @@ jobs:
             .build
             ~/Library/Caches/org.swift.swiftpm
             ~/.swiftpm
-          key: ${{ runner.os }}-spm-release-${{ hashFiles('Package.resolved', 'Package.swift') }}
-          restore-keys: |
-            ${{ runner.os }}-spm-release-
+          key: ${{ runner.os }}-spm-release-v2-${{ hashFiles('Package.resolved', 'Package.swift') }}
 
       - name: Resolve dependencies
         run: swift package resolve
@@ -141,9 +140,7 @@ jobs:
             .build
             /root/.cache/org.swift.swiftpm
             /root/.swiftpm
-          key: ${{ runner.os }}-spm-release-linux-${{ hashFiles('Package.resolved', 'Package.swift') }}
-          restore-keys: |
-            ${{ runner.os }}-spm-release-linux-
+          key: ${{ runner.os }}-spm-release-v2-linux-${{ hashFiles('Package.resolved', 'Package.swift') }}
 
       - name: Resolve dependencies
         run: swift package resolve

@@ -148,48 +148,82 @@ public struct CITestPlanSummary: Codable, Sendable {
 /// A single normalized failure report for a build run, gathering everything an
 /// agent needs to reason about *what broke* without making further round-trips.
 public struct CIFailureReport: Codable, Sendable {
+    /// Identifier of the build run summarized by this report.
     public let buildRunID: String
+    /// Display name of the workflow, when supplied by the caller.
     public let workflowName: String?
+    /// Build number assigned by Xcode Cloud.
     public let number: Int?
+    /// Completion status reported by Xcode Cloud.
     public let completionStatus: String?
+    /// Source revision built by this run.
     public let sourceCommitSha: String?
+    /// Commit message associated with the source revision.
     public let sourceCommitMessage: String?
+    /// Start timestamp supplied by Xcode Cloud.
     public let startedDate: String?
+    /// Completion timestamp supplied by Xcode Cloud.
     public let finishedDate: String?
     /// Wall-clock seconds the run took. A value at or near the Xcode Cloud ceiling
     /// (7200s / 120 min) is the immediate signal for a timeout rather than a code failure.
     public let durationSeconds: Double?
+    /// Non-succeeded actions with their issues, failed tests, and artifacts.
     public let failedActions: [FailedAction]
 
+    /// One unsuccessful action and its diagnostic evidence.
     public struct FailedAction: Codable, Sendable {
+        /// Identifier of the failed build action.
         public let id: String
+        /// Display name supplied by Xcode Cloud.
         public let name: String?
+        /// Action category, such as a build or test action.
         public let actionType: String?
+        /// Completion status reported by Xcode Cloud.
         public let completionStatus: String?
+        /// Start timestamp supplied by Xcode Cloud.
         public let startedDate: String?
+        /// Completion timestamp supplied by Xcode Cloud.
         public let finishedDate: String?
+        /// Wall-clock duration of the action in seconds, when available.
         public let durationSeconds: Double?
+        /// Compiler and build issues reported for this action.
         public let issues: [Issue]
+        /// Tests whose reported status contains a failure.
         public let failedTests: [FailedTest]
+        /// Artifacts available for this action, including signed download URLs.
         public let artifacts: [Artifact]
 
+        /// A source issue reported during the action.
         public struct Issue: Codable, Sendable {
+            /// Issue category reported by Xcode Cloud.
             public let type: String?
+            /// Diagnostic message reported by the build or test.
             public let message: String?
+            /// Source file path associated with the issue.
             public let path: String?
+            /// Source line number associated with the issue.
             public let line: Int?
         }
 
+        /// A failed test and its diagnostic message.
         public struct FailedTest: Codable, Sendable {
+            /// Name of the test class containing the failed test.
             public let className: String?
+            /// Display name supplied by Xcode Cloud.
             public let name: String?
+            /// Test status reported by Xcode Cloud.
             public let status: String?
+            /// Diagnostic message reported by the build or test.
             public let message: String?
         }
 
+        /// An artifact that can provide additional evidence.
         public struct Artifact: Codable, Sendable {
+            /// Artifact type reported by Xcode Cloud.
             public let fileType: String?
+            /// Artifact filename reported by Xcode Cloud.
             public let fileName: String?
+            /// Short-lived signed URL for downloading this artifact without API authorization.
             public let downloadUrl: String?
         }
     }

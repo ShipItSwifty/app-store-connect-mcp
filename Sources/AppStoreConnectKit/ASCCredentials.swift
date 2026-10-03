@@ -62,17 +62,21 @@ extension AppStoreConnectClient {
     ///   - credentials: The API key credentials.
     ///   - serverURL: Optional proxy base URL. Defaults to Apple's API host.
     ///   - session: URL session used for outbound HTTP requests.
+    ///   - retryPolicy: How transient API failures are retried. Use
+    ///     ``TransientRetryPolicy/disabled`` to make each request once.
     public init(
         credentials: ASCCredentials,
         serverURL: URL? = nil,
-        session: URLSession = .shared
+        session: URLSession = .shared,
+        retryPolicy: TransientRetryPolicy = .default
     ) {
         self.init(
             keyID: credentials.keyID,
             issuerID: credentials.issuerID,
             privateKeyData: credentials.privateKeyData,
             serverURL: serverURL,
-            session: session
+            session: session,
+            retryPolicy: retryPolicy
         )
     }
 }

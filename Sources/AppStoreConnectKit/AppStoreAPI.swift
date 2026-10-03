@@ -194,7 +194,9 @@ extension AppStoreConnectClient {
 
     /// Lists the team's provisioning profiles.
     ///
-    /// - Parameter state: Optional `filter[profileState]` — `ACTIVE` or `INVALID`.
+    /// - Parameters:
+    ///   - state: Optional `filter[profileState]` — `ACTIVE` or `INVALID`.
+    ///   - limit: Maximum profiles to return across all pages. Defaults to 200.
     public func profiles(state: String? = nil, limit: Int = 200) async throws -> ASCListResponse<ASCProfile> {
         var query: [String: String] = [:]
         if let state { query["filter[profileState]"] = state }
