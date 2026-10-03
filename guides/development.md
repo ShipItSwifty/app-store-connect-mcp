@@ -51,8 +51,8 @@ notes and user-facing changes in PR descriptions for generated release notes.
 Push a new bare-SemVer tag (no `v` prefix) on `main`:
 
 ```bash
-git tag 0.2.1
-git push origin 0.2.1
+git tag 0.2.2
+git push origin 0.2.2
 ```
 
 `.github/workflows/release.yml` then builds the `app-store-connect-mcp` binaries

@@ -1,7 +1,7 @@
 {
   "name": "app-store-connect",
   "displayName": "App Store Connect by ShipItSwifty",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Investigate Xcode Cloud failures, check App Store review readiness, and prepare releases using your App Store Connect API key.",
   "author": {
     "name": "ShipItSwifty",

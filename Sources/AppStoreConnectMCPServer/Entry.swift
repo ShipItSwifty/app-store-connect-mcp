@@ -125,7 +125,7 @@ struct AppStoreConnectMCP {
 }
 
 enum ASCMCPVersion {
-    static let current = "0.2.1"
+    static let current = "0.2.2"
 }
 
 /// How the process was invoked: serve the MCP server (default) or print info and exit.

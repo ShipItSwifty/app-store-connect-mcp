@@ -5,7 +5,7 @@
 **Requires Swift 6.3+** (macOS 15+ / Linux).
 
 ```swift
-.package(url: "https://github.com/ShipItSwifty/app-store-connect-mcp.git", from: "0.2.1"),
+.package(url: "https://github.com/ShipItSwifty/app-store-connect-mcp.git", from: "0.2.2"),
 ```
 
 ```swift
