@@ -143,15 +143,19 @@ Then ask your agent things like:
 
 ### Claude plugin
 
-This repository is a local Claude Code plugin with a configurable stdio server
-and skills for CI triage, review readiness, and release preparation. From a
-checkout, run `claude plugin validate .` and `claude --plugin-dir .`, then configure
-your installed binary and App Store Connect key in the plugin settings. Writes
-are disabled by default.
+`plugins/app-store-connect` is a Claude Code plugin that registers this server and adds
+skills for CI triage, review readiness, and release preparation. Install the server first
+(`brew install ShipItSwifty/tap/app-store-connect-mcp`), then in Claude Code:
 
-The server supports stateless MCP `2026-07-28` requests and legacy initialization.
-The local plugin targets Claude Code; Claude chat needs a separately hosted
-connector. See [plugin setup, protocol details, and directory submission](guides/claude-plugin.md).
+```text
+/plugin marketplace add ShipItSwifty/app-store-connect-mcp
+/plugin install app-store-connect@shipitswifty-app-store-connect
+```
+
+Enter your Team API key ID, issuer ID, and `.p8` file when prompted. Writes are disabled by
+default. The server supports stateless MCP `2026-07-28` requests and legacy initialization.
+The local plugin targets Claude Code; Claude chat needs a separately hosted connector. See
+[plugin setup, protocol details, and directory submission](guides/claude-directory.md).
 
 ### Install
 
@@ -330,13 +334,13 @@ their output. They reference read-only tools only.
 
 ### Claude Code skill
 
-[`skills/app-store-connect/SKILL.md`](skills/app-store-connect/SKILL.md) is a richer
+[`plugins/app-store-connect/skills/app-store-connect/SKILL.md`](plugins/app-store-connect/skills/app-store-connect/SKILL.md) is a richer
 version of the same playbooks for Claude Code, including what 401 / 403 mean and when
 to stop drilling. `scripts/install-mcp.sh` offers to install it; by hand:
 
 ```bash
 mkdir -p ~/.claude/skills/app-store-connect
-cp skills/app-store-connect/SKILL.md ~/.claude/skills/app-store-connect/
+cp plugins/app-store-connect/skills/app-store-connect/SKILL.md ~/.claude/skills/app-store-connect/
 ```
 
 Or copy it into a project's `.claude/skills/` to share it with the team.

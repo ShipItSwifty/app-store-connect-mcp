@@ -99,13 +99,13 @@ their output. They reference read-only tools only.
 
 ### Claude Code skill
 
-[`skills/app-store-connect/SKILL.md`](../skills/app-store-connect/SKILL.md) is a richer
+[`plugins/app-store-connect/skills/app-store-connect/SKILL.md`](../plugins/app-store-connect/skills/app-store-connect/SKILL.md) is a richer
 version of the same playbooks for Claude Code, including what 401 / 403 mean and when
 to stop drilling. `scripts/install-mcp.sh` offers to install it; by hand:
 
 ```bash
 mkdir -p ~/.claude/skills/app-store-connect
-cp skills/app-store-connect/SKILL.md ~/.claude/skills/app-store-connect/
+cp plugins/app-store-connect/skills/app-store-connect/SKILL.md ~/.claude/skills/app-store-connect/
 ```
 
 Or copy it into a project's `.claude/skills/` to share it with the team.

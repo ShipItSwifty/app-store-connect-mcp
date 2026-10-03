@@ -1,0 +1,15 @@
+{
+  "name": "shipitswifty-app-store-connect",
+  "owner": {
+    "name": "ShipItSwifty",
+    "url": "https://github.com/ShipItSwifty"
+  },
+  "description": "App Store Connect tools and release workflows for Claude Code.",
+  "plugins": [
+    {
+      "name": "app-store-connect",
+      "source": "./plugins/app-store-connect",
+      "description": "Registers the app-store-connect-mcp server and adds skills for Xcode Cloud triage, review readiness, and release preparation."
+    }
+  ]
+}

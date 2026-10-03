@@ -1,20 +1,17 @@
 {
   "name": "app-store-connect",
-  "displayName": "App Store Connect",
-  "version": "0.1.0",
+  "displayName": "App Store Connect by ShipItSwifty",
+  "version": "0.2.1",
   "description": "Investigate Xcode Cloud failures, check App Store review readiness, and prepare releases using your App Store Connect API key.",
-  "author": { "name": "Mani Ramezan", "url": "https://github.com/maniramezan" },
-  "homepage": "https://shipitswifty.github.io/app-store-connect-mcp/",
+  "author": {
+    "name": "ShipItSwifty",
+    "url": "https://github.com/ShipItSwifty"
+  },
+  "homepage": "https://github.com/ShipItSwifty/app-store-connect-mcp",
   "repository": "https://github.com/ShipItSwifty/app-store-connect-mcp",
   "license": "MIT",
-  "keywords": ["app-store-connect", "xcode-cloud", "testflight", "swift"],
+  "keywords": ["app-store-connect", "xcode-cloud", "testflight", "mcp"],
   "userConfig": {
-    "binary_path": {
-      "type": "file",
-      "title": "MCP server executable",
-      "description": "Absolute path to your installed app-store-connect-mcp executable. Install or build it before enabling the plugin.",
-      "required": true
-    },
     "key_id": {
       "type": "string",
       "title": "App Store Connect key ID",
@@ -32,9 +29,8 @@
     "private_key_path": {
       "type": "file",
       "title": "Private key file",
-      "description": "Absolute path to the matching AuthKey .p8 file on this computer. The plugin does not copy or upload the file.",
-      "required": true,
-      "sensitive": true
+      "description": "Select the matching AuthKey .p8 file. The local server reads it to sign short-lived tokens for Apple's API; the plugin does not copy or upload it.",
+      "required": true
     },
     "vendor_number": {
       "type": "string",
@@ -45,7 +41,7 @@
     "enable_writes": {
       "type": "boolean",
       "title": "Enable write tools",
-      "description": "Allow tools for starting builds, changing release metadata, submitting for review, and requesting analytics reports.",
+      "description": "Allow tools for starting builds, changing release metadata, submitting for review, and requesting analytics reports. These actions change real App Store Connect state.",
       "default": false
     }
   }

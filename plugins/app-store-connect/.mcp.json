@@ -1,11 +1,9 @@
 {
   "mcpServers": {
     "app-store-connect": {
-      "type": "stdio",
-      "command": "${CLAUDE_PLUGIN_ROOT}/scripts/start-plugin-server.sh",
+      "command": "${CLAUDE_PLUGIN_ROOT}/scripts/start-server.sh",
       "args": [],
       "env": {
-        "ASC_MCP_BINARY": "${user_config.binary_path}",
         "ASC_KEY_ID": "${user_config.key_id}",
         "ASC_ISSUER_ID": "${user_config.issuer_id}",
         "ASC_PRIVATE_KEY_PATH": "${user_config.private_key_path}",

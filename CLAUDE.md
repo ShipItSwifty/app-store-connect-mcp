@@ -98,7 +98,7 @@ coverage climbs, don't lower it without a reason.
   (the `initialize` instructions) and `ServerPrompts` (MCP prompts, one `PromptSpec`
   each). `ServerPromptsTests` fails if either names a tool the catalog doesn't
   advertise, or a prompt names a write tool — rename a tool and they must follow.
-- `skills/app-store-connect/SKILL.md` — the Claude Code skill; same playbooks as the
+- `plugins/app-store-connect/skills/app-store-connect/SKILL.md` — the Claude Code skill; same playbooks as the
   prompts, in more depth. Keep the two in step when a workflow changes.
 - **Tool output is compact JSON** (`CITools.json`: sorted keys, no pretty-printing), and
   `asc_api_get` passes Apple's body through verbatim. Tests assert on `"key":value`

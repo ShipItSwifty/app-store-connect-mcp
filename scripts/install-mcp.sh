@@ -2,7 +2,7 @@
 #
 # install-mcp.sh — register app-store-connect-mcp with whichever of Claude Code,
 # Claude Desktop, Codex CLI, Cursor, and Windsurf are installed on this machine, and
-# optionally install the companion Claude Code skill (skills/app-store-connect).
+# optionally install the companion Claude Code skill (plugins/app-store-connect/skills/app-store-connect).
 #
 # Never run automatically (not a Homebrew postinstall hook, not part of `swift build`).
 # You run this by hand, it asks before touching each client's config, and every write
@@ -122,7 +122,7 @@ if command -v claude >/dev/null 2>&1; then
     fi
     # The companion skill (investigation playbooks) lives next to this script in a
     # checkout; a copy of the script on its own has nothing to install.
-    skill_source="$(cd "$(dirname "$0")/.." && pwd)/skills/app-store-connect"
+    skill_source="$(cd "$(dirname "$0")/.." && pwd)/plugins/app-store-connect/skills/app-store-connect"
     skill_target="${HOME}/.claude/skills/app-store-connect"
     if [[ -f "${skill_source}/SKILL.md" ]]; then
         if confirm "Install the app-store-connect skill for Claude Code (${skill_target})?"; then
