@@ -10,6 +10,10 @@
   "homepage": "https://github.com/ShipItSwifty/app-store-connect-mcp",
   "repository": "https://github.com/ShipItSwifty/app-store-connect-mcp",
   "license": "MIT",
+  "documentationUrl": "https://github.com/ShipItSwifty/app-store-connect-mcp/blob/main/guides/mcp-setup.md",
+  "supportUrl": "https://github.com/ShipItSwifty/app-store-connect-mcp/issues",
+  "privacyPolicyUrl": "https://github.com/ShipItSwifty/app-store-connect-mcp/blob/main/guides/privacy.md",
+  "termsOfServiceUrl": "https://github.com/ShipItSwifty/app-store-connect-mcp/blob/main/guides/terms.md",
   "keywords": ["app-store-connect", "xcode-cloud", "testflight", "mcp"],
   "userConfig": {
     "key_id": {

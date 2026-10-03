@@ -529,3 +529,5 @@ history, and publishes a GitHub Release with the artifacts and checksums.
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+See also the [privacy policy](guides/privacy.md) and [terms of service](guides/terms.md).
