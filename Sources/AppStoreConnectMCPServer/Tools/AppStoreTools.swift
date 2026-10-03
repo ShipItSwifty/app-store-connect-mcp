@@ -1,6 +1,6 @@
 import AppStoreConnectKit
+import AppStoreConnectMCPSDK
 import Foundation
-import MCP
 
 /// The App Store / TestFlight side of the tool catalog.
 ///

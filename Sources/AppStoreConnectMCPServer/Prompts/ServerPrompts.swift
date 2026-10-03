@@ -1,5 +1,5 @@
+import AppStoreConnectMCPSDK
 import Foundation
-import MCP
 
 /// Guidance sent in modern discovery or legacy initialization's `instructions` field.
 ///

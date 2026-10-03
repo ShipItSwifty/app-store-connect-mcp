@@ -1,4 +1,4 @@
-import MCP
+import AppStoreConnectMCPSDK
 
 /// JSON Schemas for the tools whose result is a stable, documented object.
 ///

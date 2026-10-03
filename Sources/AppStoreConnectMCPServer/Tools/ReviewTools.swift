@@ -1,6 +1,6 @@
 import AppStoreConnectKit
+import AppStoreConnectMCPSDK
 import Foundation
-import MCP
 
 /// Tools for the questions that surround a submission rather than the submission
 /// itself: how far a staged rollout has got, what App Review was told, what the

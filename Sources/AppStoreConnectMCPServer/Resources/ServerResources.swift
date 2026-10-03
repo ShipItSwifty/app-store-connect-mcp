@@ -1,6 +1,6 @@
 import AppStoreConnectKit
+import AppStoreConnectMCPSDK
 import Foundation
-import MCP
 
 /// One MCP resource (or resource template) and the read-only tool that serves it.
 ///
