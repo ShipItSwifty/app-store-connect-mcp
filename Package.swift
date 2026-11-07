@@ -16,7 +16,7 @@ let package = Package(
     ],
     dependencies: [
         // JWTKit 5.7.1 requires Crypto 4.x even though swift-certificates now accepts 5.x.
-        .package(url: "https://github.com/apple/swift-crypto", from: "4.5.2"),
+        .package(url: "https://github.com/apple/swift-crypto", from: "5.1.1"),
         .package(url: "https://github.com/vapor/jwt-kit", .upToNextMajor(from: "5.7.1")),
         .package(url: "https://github.com/apple/swift-log", from: "1.15.1"),
         .package(url: "https://github.com/maniramezan/SwiftyShell.git", from: "0.7.0"),
