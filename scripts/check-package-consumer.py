@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build both libraries from a temporary semantic-versioned repository snapshot."""
+"""Build the libraries alongside Google Play from a versioned repository snapshot."""
 
 import json
 from pathlib import Path
@@ -44,13 +44,17 @@ with tempfile.TemporaryDirectory(prefix="asc-package-consumer-") as temporary:
     (consumer / "Package.swift").write_text(
         '// swift-tools-version: 6.3\nimport PackageDescription\n'
         'let package = Package(name: "Consumer", platforms: [.macOS(.v15)], '
-        f'dependencies: [.package(url: {json.dumps(repository.as_uri())}, exact: "0.0.0")], '
+        f'dependencies: [.package(url: {json.dumps(repository.as_uri())}, exact: "0.0.0"), '
+        '.package(url: "https://github.com/ShipItSwifty/google-play-store-mcp.git", exact: "0.2.1")], '
         'targets: [.executableTarget(name: "Consumer", dependencies: ['
         '.product(name: "AppStoreConnectKit", package: "app-store-connect-mcp"), '
-        '.product(name: "AppStoreConnectUploadKit", package: "app-store-connect-mcp")])])\n'
+        '.product(name: "AppStoreConnectUploadKit", package: "app-store-connect-mcp"), '
+        '.product(name: "GoogleAuthKit", package: "google-play-store-mcp"), '
+        '.product(name: "GooglePlayKit", package: "google-play-store-mcp")])])\n'
     )
     (sources / "main.swift").write_text(
         'import AppStoreConnectKit\n'
+        'import GoogleAuthKit\nimport GooglePlayKit\n'
         '#if os(macOS)\nimport AppStoreConnectUploadKit\n#endif\n'
         'let credentials = ASCCredentials(keyID: "example", issuerID: "example", privateKeyPEM: "example")\n'
         'let client = AppStoreConnectClient(credentials: credentials, retryPolicy: .disabled)\n'

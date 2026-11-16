@@ -1,5 +1,5 @@
+import AppStoreConnectMCPSDK
 import Foundation
-import MCP
 import Testing
 
 @testable import AppStoreConnectMCPServer
@@ -256,7 +256,7 @@ struct ModernProtocolTests {
     }
 }
 
-private enum ContextProbe: MCP.Method {
+private enum ContextProbe: AppStoreConnectMCPSDK.Method {
     static let name = "test/context"
     typealias Parameters = Value
     typealias Result = Value

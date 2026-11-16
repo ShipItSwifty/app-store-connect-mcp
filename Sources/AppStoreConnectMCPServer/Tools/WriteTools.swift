@@ -1,6 +1,6 @@
 import AppStoreConnectKit
+import AppStoreConnectMCPSDK
 import Foundation
-import MCP
 
 /// The tools that change something in App Store Connect.
 ///

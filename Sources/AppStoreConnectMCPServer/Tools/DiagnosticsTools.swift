@@ -1,6 +1,6 @@
 import AppStoreConnectKit
+import AppStoreConnectMCPSDK
 import Foundation
-import MCP
 
 /// Tools for what real devices report, as opposed to what CI reports: hang, launch and
 /// disk-write signatures with their call stacks, TestFlight crash logs, and the Xcode

@@ -1,6 +1,6 @@
 import AppStoreConnectKit
+import AppStoreConnectMCPSDK
 import Foundation
-import MCP
 import Synchronization
 
 /// The App Store Connect read/diagnostic tools exposed by this MCP server.

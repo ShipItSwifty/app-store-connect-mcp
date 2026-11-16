@@ -1,5 +1,5 @@
+import AppStoreConnectMCPSDK
 import Foundation
-import MCP
 import Testing
 
 @Suite("Experimental capability compatibility")

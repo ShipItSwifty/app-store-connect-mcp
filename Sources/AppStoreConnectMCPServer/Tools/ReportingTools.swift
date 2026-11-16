@@ -1,6 +1,6 @@
 import AppStoreConnectKit
+import AppStoreConnectMCPSDK
 import Foundation
-import MCP
 
 /// Tools for the two bulk-data corners of the API: App Store analytics (installs,
 /// impressions, sessions, crashes) and sales and trends reports.

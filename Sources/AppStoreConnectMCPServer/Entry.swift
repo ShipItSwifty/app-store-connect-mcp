@@ -1,7 +1,7 @@
 import AppStoreConnectKit
+import AppStoreConnectMCPSDK
 import Foundation
 import Logging
-import MCP
 
 #if canImport(FoundationNetworking)
 import FoundationNetworking

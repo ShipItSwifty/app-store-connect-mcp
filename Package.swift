@@ -30,7 +30,7 @@ let package = Package(
         // Keep the patched SDK in this package so versioned downstream dependencies
         // resolve without an unsupported local package dependency.
         .target(
-            name: "MCP",
+            name: "AppStoreConnectMCPSDK",
             dependencies: [
                 .product(name: "SystemPackage", package: "swift-system"),
                 .product(name: "Logging", package: "swift-log"),
@@ -65,7 +65,7 @@ let package = Package(
             name: "AppStoreConnectMCPServer",
             dependencies: [
                 "AppStoreConnectKit",
-                "MCP",
+                "AppStoreConnectMCPSDK",
                 .product(name: "Logging", package: "swift-log"),
             ]
         ),
@@ -89,7 +89,7 @@ let package = Package(
             dependencies: [
                 "AppStoreConnectMCPServer",
                 "AppStoreConnectKit",
-                "MCP",
+                "AppStoreConnectMCPSDK",
             ]
         ),
     ],
