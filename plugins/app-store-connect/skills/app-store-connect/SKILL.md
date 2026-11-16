@@ -126,10 +126,13 @@ narrow your plan: prefer the aggregating tools, stop broad scans, and tell the u
 ## Writes
 
 Write tools (`asc_ci_start_build`, `asc_ci_rerun_build`, `asc_update_whats_new`,
-`asc_submit_for_review`, `asc_create_analytics_report_request`,
-`asc_respond_to_review`, `asc_add_build_to_beta_group`, `asc_invite_beta_tester`) exist
-only when the server runs with `ASC_ENABLE_WRITES=1`. If a user asks for one and it's
-disabled, tell them how to enable it — don't route around it with other tools. Always
-confirm with the user before calling `asc_submit_for_review` (public and irreversible),
-starting a build (spends compute minutes), `asc_respond_to_review` (show the exact reply
-text — it is public), or `asc_invite_beta_tester` (emails the address you give it).
+`asc_submit_for_review`, `asc_create_analytics_report_request`) exist only when the
+server runs with `ASC_ENABLE_WRITES=1`. If a user asks for one and it's disabled, tell
+them how to enable it — don't route around it with other tools. Always confirm with the
+user before calling `asc_submit_for_review` (public and irreversible) or starting a
+build (spends compute minutes).
+
+The engagement writes sit behind the same flag: `asc_respond_to_review`,
+`asc_add_build_to_beta_group`, and `asc_invite_beta_tester`. Confirm before
+`asc_respond_to_review` (show the user the exact reply text — it is public) and before
+`asc_invite_beta_tester` (it emails the address you give it).
