@@ -97,6 +97,23 @@ Say when stacks are unsymbolicated rather than guessing at a cause.
 `asc_list_customer_reviews`. Stop drilling into any area that's healthy. Summarize as a
 table: area, status, action needed.
 
+### Drilling into Xcode Cloud by hand
+
+Only when the aggregating tools above miss, walk the hierarchy:
+`asc_ci_list_products` → `asc_ci_list_workflows` → `asc_ci_list_build_runs`
+(`failed_only` narrows it) → `asc_ci_get_build_run` (run plus its actions) →
+`asc_ci_get_issues` / `asc_ci_get_test_results` / `asc_ci_get_artifacts` for one action.
+`asc_ci_analyze_log` parses a log the user pastes, or one artifact URL, without
+fetching a whole report.
+
+### App analytics
+
+`asc_list_analytics_reports` shows which analytics report requests exist and the
+reports under each; `asc_get_analytics_report` fetches one report's newest data as a
+bounded table. If nothing is set up yet, the app needs a report request first
+(`asc_create_analytics_report_request`, a write tool), and Apple takes a day or more to
+produce the first data — say so rather than retrying.
+
 ## Anything else
 
 `asc_api_get` performs any `GET` under `/v1/` or `/v2/` and returns Apple's JSON
@@ -113,6 +130,7 @@ narrow your plan: prefer the aggregating tools, stop broad scans, and tell the u
 ## Writes
 
 Write tools (`asc_ci_start_build`, `asc_ci_rerun_build`, `asc_update_whats_new`,
+`asc_update_version_localization`, `asc_update_app_info_localization`,
 `asc_submit_for_review`, `asc_create_analytics_report_request`) exist only when the
 server runs with `ASC_ENABLE_WRITES=1`. If a user asks for one and it's disabled, tell
 them how to enable it — don't route around it with other tools. Always confirm with the

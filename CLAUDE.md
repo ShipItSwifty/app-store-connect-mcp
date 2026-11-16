@@ -33,7 +33,8 @@ xcrun swift-format lint --recursive --strict --configuration .swift-format Sourc
 python3 scripts/check-plugin.py
 ```
 
-CI runs all five plus a Linux build. The coverage floor is a ratchet: raise it as
+CI runs all five plus the downstream consumer check, the MCP smoke test, and a Linux
+build. The coverage floor is a ratchet: raise it as
 coverage climbs, don't lower it without a reason.
 
 ## Things that will bite you
@@ -49,13 +50,15 @@ coverage climbs, don't lower it without a reason.
   that returns a collection, or you silently truncate at one page.
 - **The `ci*` endpoints need a Team key** with Developer / App Manager / Admin access;
   finance/sales-only keys get 403 on them while metadata calls still succeed.
-- **jwt-kit is `.upToNextMajor(from: "5.7.1")`; swift-crypto is `from: "4.5.2"`
-  (so `< 5.0.0`).** swift-crypto 5 is blocked on apple/swift-certificates, which jwt-kit
-  pulls in and which still caps crypto below 5.0.0 — see the comment in `Package.swift`
-  before trying to lift it.
-- **The MCP SDK is a pinned fork revision** (`maniramezan/swift-sdk`), for a decoding
-  fix to object-valued experimental capabilities that Codex sends
-  (`ExperimentalCapabilitiesTests`). Return to upstream once a release carries it.
+- **jwt-kit is `.upToNextMajor(from: "5.7.1")`; swift-crypto is `from: "5.1.1"`.** Both
+  float within their major (`Package.resolved` has the versions CI builds). swift-crypto
+  was held below 5.0.0 until jwt-kit and apple/swift-certificates accepted 5.x; if a
+  bump fails to resolve, check those two before touching the pin.
+- **The MCP SDK is vendored** at `Vendor/swift-sdk` (upstream 0.12.1 plus local patches),
+  built as the package-private `MCP` target. It carries the decoding fix for
+  object-valued experimental capabilities that Codex sends (`ExperimentalCapabilitiesTests`)
+  and server support for the `2026-07-28` revision; `Vendor/swift-sdk/README.md` lists
+  every local change. Return to upstream once a release carries both.
 - **`betaGroups.publicLink` is a URL string, not a Bool.** It was modelled as `Bool`
   and threw `typeMismatch` for every group with a public link enabled. Apple's
   attribute types are worth checking against the docs JSON

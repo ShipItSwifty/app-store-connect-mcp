@@ -7,9 +7,14 @@ swift build
 swift test --enable-code-coverage --no-parallel
 MIN_LINE_COVERAGE=85 scripts/coverage-gate.sh
 xcrun swift-format lint --recursive --strict --configuration .swift-format Sources Tests
+python3 scripts/check-plugin.py
 ```
 
-CI runs all four on macOS plus a Linux build and test (`swift:6.3-noble`).
+CI runs all five on macOS, plus the downstream consumer check
+(`python3 scripts/check-package-consumer.py`), the MCP smoke test
+(`python3 scripts/smoke-mcp.py <binary>`), and a Linux build and test
+(`swift:6.3-noble`). Run the tests with `--no-parallel`: the MCP tool tests share one
+mock response queue.
 
 Build the documentation locally:
 
