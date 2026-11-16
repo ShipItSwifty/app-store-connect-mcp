@@ -94,7 +94,7 @@ struct RateLimiterTests {
     }
 
     @Test(
-        "Backoff is nil below the threshold and grows from a tenth to the whole of maxBackoff",
+        "Backoff is nil below the threshold and grows from minBackoff to maxBackoff",
         arguments: [
             (remaining: 200, expected: nil),
             (remaining: 100, expected: Duration.milliseconds(1_000)),
@@ -104,7 +104,8 @@ struct RateLimiterTests {
     )
     func backoffScalesWithUsage(remaining: Int, expected: Duration?) throws {
         let delay = RateLimiter.backoff(
-            limit: 1000, remaining: remaining, threshold: 0.9, maxBackoff: .seconds(10))
+            limit: 1000, remaining: remaining, threshold: 0.9,
+            minBackoff: .seconds(1), maxBackoff: .seconds(10))
         guard let expected else {
             #expect(delay == nil)
             return
@@ -113,9 +114,40 @@ struct RateLimiterTests {
         #expect(abs((actual - expected) / .milliseconds(1)) < 1)
     }
 
+    @Test("By default the throttle is a flat 5 s at every depth, as before the queue existed")
+    func defaultBackoffIsFlat() async throws {
+        let limiter = RateLimiter()
+        #expect(limiter.minBackoff == .seconds(5))
+        #expect(limiter.maxBackoff == .seconds(5))
+        for remaining in [350, 175, 0] {
+            let delay = try #require(
+                RateLimiter.backoff(
+                    limit: 3500, remaining: remaining, threshold: limiter.throttleThreshold,
+                    minBackoff: limiter.minBackoff, maxBackoff: limiter.maxBackoff))
+            #expect(delay == .seconds(5))
+        }
+    }
+
+    @Test("A minBackoff above maxBackoff is clamped down to it")
+    func minBackoffIsClamped() {
+        let limiter = RateLimiter(minBackoff: .seconds(9), maxBackoff: .seconds(2))
+        #expect(limiter.minBackoff == .seconds(2))
+    }
+
+    @Test("A client uses the limiter it is given")
+    func clientUsesInjectedLimiter() async throws {
+        let limiter = RateLimiter(throttleThreshold: 0.5)
+        let client = AppStoreConnectClient(
+            credentials: ASCCredentials(keyID: "K", issuerID: "I", privateKeyPEM: "P"),
+            rateLimiter: limiter
+        )
+        #expect(client.rateLimiter === limiter)
+    }
+
     @Test("Concurrent throttled callers are spaced out rather than released together")
     func concurrentCallersQueue() async {
-        let limiter = RateLimiter(throttleThreshold: 0.9, maxBackoff: .milliseconds(60))
+        let limiter = RateLimiter(
+            throttleThreshold: 0.9, minBackoff: .milliseconds(60), maxBackoff: .milliseconds(60))
         await limiter.update(from: ["X-Rate-Limit": "user-hour-lim:1000;user-hour-rem:0"])
 
         let start = ContinuousClock.now

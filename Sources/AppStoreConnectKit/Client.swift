@@ -76,6 +76,9 @@ public actor AppStoreConnectClient {
     ///   - tokenProvider: Optional auth token provider used instead of `JWTGenerator`.
     ///   - retryPolicy: How `429`/`5xx` responses are retried. Pass ``TransientRetryPolicy/disabled``
     ///     to perform every request exactly once.
+    ///   - rateLimiter: Paces requests once the hourly budget runs low. Pass a configured
+    ///     ``RateLimiter`` to change its threshold or pauses, or share one instance between
+    ///     clients that use the same key so they pace together.
     public init(
         keyID: String,
         issuerID: String,
@@ -83,7 +86,8 @@ public actor AppStoreConnectClient {
         serverURL: URL? = nil,
         session: URLSession = .shared,
         tokenProvider: (@Sendable () async throws -> String)? = nil,
-        retryPolicy: TransientRetryPolicy = .default
+        retryPolicy: TransientRetryPolicy = .default,
+        rateLimiter: RateLimiter = RateLimiter()
     ) {
         self.keyID = keyID
         self.issuerID = issuerID
@@ -93,7 +97,7 @@ public actor AppStoreConnectClient {
         self.tokenProvider = tokenProvider
         self.retryPolicy = retryPolicy
         self.jwtGenerator = JWTGenerator(keyID: keyID, issuerID: issuerID, privateKeyData: privateKeyData)
-        self.rateLimiter = RateLimiter()
+        self.rateLimiter = rateLimiter
 
         // App Store Connect is camelCase on the wire in *both* directions
         // (`bundleId`, `versionString`, `whatsNew`, `appStoreVersion`, …), so no key
