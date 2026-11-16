@@ -90,13 +90,6 @@ Answer internal and external availability separately.
 
 Say when stacks are unsymbolicated rather than guessing at a cause.
 
-### Release health
-
-`asc_list_app_store_versions` → `asc_submission_status` (if not live) →
-`asc_phased_release_status` → `asc_list_builds` → `asc_signing_assets` →
-`asc_list_customer_reviews`. Stop drilling into any area that's healthy. Summarize as a
-table: area, status, action needed.
-
 ### In-app purchases, subscriptions, and revenue
 
 - **What's blocking an IAP or subscription?** `asc_list_in_app_purchases` (consumables,
@@ -109,6 +102,13 @@ table: area, status, action needed.
   calendar months and appear only after they close, so `found: false` for the current
   month is expected. Both need the vendor number; a 403 means the key lacks access to
   Sales or Payments and Financial Reports.
+
+### Release health
+
+`asc_list_app_store_versions` → `asc_submission_status` (if not live) →
+`asc_phased_release_status` → `asc_list_builds` → `asc_signing_assets` →
+`asc_list_customer_reviews`. Stop drilling into any area that's healthy. Summarize as a
+table: area, status, action needed.
 
 ## Anything else
 
