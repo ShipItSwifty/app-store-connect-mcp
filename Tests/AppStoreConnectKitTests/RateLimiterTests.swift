@@ -93,6 +93,42 @@ struct RateLimiterTests {
         #expect(await limiter.status(maxAge: .seconds(60), now: stamp + .seconds(61)) == nil)
     }
 
+    @Test(
+        "Backoff is nil below the threshold and grows from a tenth to the whole of maxBackoff",
+        arguments: [
+            (remaining: 200, expected: nil),
+            (remaining: 100, expected: Duration.milliseconds(1_000)),
+            (remaining: 50, expected: Duration.milliseconds(5_500)),
+            (remaining: 0, expected: Duration.milliseconds(10_000)),
+        ] as [(remaining: Int, expected: Duration?)]
+    )
+    func backoffScalesWithUsage(remaining: Int, expected: Duration?) throws {
+        let delay = RateLimiter.backoff(
+            limit: 1000, remaining: remaining, threshold: 0.9, maxBackoff: .seconds(10))
+        guard let expected else {
+            #expect(delay == nil)
+            return
+        }
+        let actual = try #require(delay)
+        #expect(abs((actual - expected) / .milliseconds(1)) < 1)
+    }
+
+    @Test("Concurrent throttled callers are spaced out rather than released together")
+    func concurrentCallersQueue() async {
+        let limiter = RateLimiter(throttleThreshold: 0.9, maxBackoff: .milliseconds(60))
+        await limiter.update(from: ["X-Rate-Limit": "user-hour-lim:1000;user-hour-rem:0"])
+
+        let start = ContinuousClock.now
+        await withTaskGroup(of: Void.self) { group in
+            for _ in 0..<3 {
+                group.addTask { await limiter.throttleIfNeeded() }
+            }
+        }
+        // Three 60 ms slots back to back: the last caller cannot leave before ~180 ms,
+        // where a shared flat sleep would have released all three at ~60 ms.
+        #expect(start.duration(to: .now) >= .milliseconds(170))
+    }
+
     @Test("A header missing either half does not count as a fresh reading")
     func partialHeaderDoesNotStamp() async {
         let limiter = RateLimiter()

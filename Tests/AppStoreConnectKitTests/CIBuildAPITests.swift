@@ -91,32 +91,40 @@ struct CIBuildAPITests {
 
     @Test("Failure report computes run and action durations from started/finished dates")
     func failureReportDurations() async throws {
-        let client = makeClient(responses: [
-            .json([
-                "data": [
-                    "id": "run-1",
-                    "attributes": [
-                        "number": 1, "completionStatus": "FAILED",
-                        "startedDate": "2026-09-01T12:00:00Z",
-                        "finishedDate": "2026-09-01T14:00:00Z",
-                    ],
-                ]
-            ]),
-            .json([
-                "data": [
-                    [
-                        "id": "act-1",
+        // Routed by path: the report fetches the run, its actions, and each failed
+        // action's lists concurrently. The more specific `/actions` route comes first.
+        let client = makeClientRouting([
+            (
+                "/ciBuildRuns/run-1/actions",
+                .json([
+                    "data": [
+                        [
+                            "id": "act-1",
+                            "attributes": [
+                                "name": "Build", "actionType": "BUILD", "completionStatus": "FAILED",
+                                "startedDate": "2026-09-01T12:05:00Z",
+                                "finishedDate": "2026-09-01T12:35:00Z",
+                            ],
+                        ]
+                    ]
+                ])
+            ),
+            (
+                "/ciBuildRuns/run-1",
+                .json([
+                    "data": [
+                        "id": "run-1",
                         "attributes": [
-                            "name": "Build", "actionType": "BUILD", "completionStatus": "FAILED",
-                            "startedDate": "2026-09-01T12:05:00Z",
-                            "finishedDate": "2026-09-01T12:35:00Z",
+                            "number": 1, "completionStatus": "FAILED",
+                            "startedDate": "2026-09-01T12:00:00Z",
+                            "finishedDate": "2026-09-01T14:00:00Z",
                         ],
                     ]
-                ]
-            ]),
-            .json(["data": [String]()]),
-            .json(["data": [String]()]),
-            .json(["data": [String]()]),
+                ])
+            ),
+            ("/issues", .json(["data": [String]()])),
+            ("/testResults", .json(["data": [String]()])),
+            ("/artifacts", .json(["data": [String]()])),
         ])
 
         let report = try await client.ciFailureReport(buildRunID: "run-1")
@@ -126,45 +134,54 @@ struct CIBuildAPITests {
 
     @Test("Failure report aggregates issues, failed tests, and artifacts for failed actions")
     func failureReport() async throws {
-        let client = makeClient(responses: [
-            // ciBuildRun(id:)
-            .json([
-                "data": [
-                    "id": "run-9",
-                    "attributes": ["number": 9, "completionStatus": "FAILED", "sourceCommit": ["commitSha": "deadbeef"]],
-                ]
-            ]),
-            // ciBuildActions(buildRunID:)
-            .json([
-                "data": [
-                    ["id": "act-build", "attributes": ["name": "Build", "actionType": "BUILD", "completionStatus": "FAILED"]],
-                    ["id": "act-test", "attributes": ["name": "Test", "actionType": "TEST", "completionStatus": "SUCCEEDED"]],
-                ]
-            ]),
-            // issues for act-build
-            .json([
-                "data": [
-                    [
-                        "id": "iss-1",
-                        "attributes": [
-                            "issueType": "ERROR",
-                            "message": "use of unresolved identifier 'foo'",
-                            "fileSource": ["path": "Sources/App/Foo.swift", "lineNumber": 42],
-                        ],
+        let client = makeClientRouting([
+            (
+                "/ciBuildRuns/run-9/actions",
+                .json([
+                    "data": [
+                        ["id": "act-build", "attributes": ["name": "Build", "actionType": "BUILD", "completionStatus": "FAILED"]],
+                        ["id": "act-test", "attributes": ["name": "Test", "actionType": "TEST", "completionStatus": "SUCCEEDED"]],
                     ]
-                ]
-            ]),
-            // test results for act-build
-            .json(["data": [String]()]),
-            // artifacts for act-build
-            .json([
-                "data": [
-                    [
-                        "id": "art-1",
-                        "attributes": ["fileType": "LOG_BUNDLE", "fileName": "logs.zip", "downloadUrl": "https://example/logs"],
+                ])
+            ),
+            (
+                "/ciBuildRuns/run-9",
+                .json([
+                    "data": [
+                        "id": "run-9",
+                        "attributes": ["number": 9, "completionStatus": "FAILED", "sourceCommit": ["commitSha": "deadbeef"]],
                     ]
-                ]
-            ]),
+                ])
+            ),
+            (
+                "/ciBuildActions/act-build/issues",
+                .json([
+                    "data": [
+                        [
+                            "id": "iss-1",
+                            "attributes": [
+                                "issueType": "ERROR",
+                                "message": "use of unresolved identifier 'foo'",
+                                "fileSource": ["path": "Sources/App/Foo.swift", "lineNumber": 42],
+                            ],
+                        ]
+                    ]
+                ])
+            ),
+            ("/ciBuildActions/act-build/testResults", .json(["data": [String]()])),
+            (
+                "/ciBuildActions/act-build/artifacts",
+                .json([
+                    "data": [
+                        [
+                            "id": "art-1",
+                            "attributes": [
+                                "fileType": "LOG_BUNDLE", "fileName": "logs.zip", "downloadUrl": "https://example/logs",
+                            ],
+                        ]
+                    ]
+                ])
+            ),
         ])
 
         let report = try await client.ciFailureReport(buildRunID: "run-9", workflowName: "Release")

@@ -207,11 +207,21 @@ struct CIToolsTests {
     @Test("asc_ci_failure_report aggregates a failed action")
     func failureReport() async throws {
         let client = makeMockMCPClient([
-            jsonCanned(["data": ["id": "run-1", "attributes": ["number": 1, "completionStatus": "FAILED"]]]),
-            jsonCanned(["data": [["id": "act-1", "attributes": ["name": "Build", "actionType": "BUILD", "completionStatus": "FAILED"]]]]),
-            jsonCanned(["data": [["id": "iss-1", "attributes": ["issueType": "ERROR", "message": "nope"]]]]),
-            jsonCanned(["data": []]),
-            jsonCanned(["data": []]),
+            // Pinned by path: the report issues these requests concurrently.
+            jsonCanned(
+                ["data": [["id": "act-1", "attributes": ["name": "Build", "actionType": "BUILD", "completionStatus": "FAILED"]]]],
+                pathContains: "/ciBuildRuns/run-1/actions"
+            ),
+            jsonCanned(
+                ["data": ["id": "run-1", "attributes": ["number": 1, "completionStatus": "FAILED"]]],
+                pathContains: "/ciBuildRuns/run-1"
+            ),
+            jsonCanned(
+                ["data": [["id": "iss-1", "attributes": ["issueType": "ERROR", "message": "nope"]]]],
+                pathContains: "/issues"
+            ),
+            jsonCanned(["data": []], pathContains: "/testResults"),
+            jsonCanned(["data": []], pathContains: "/artifacts"),
         ])
         let result = try await CITools.call(name: "asc_ci_failure_report", arguments: ["build_run_id": .string("run-1")]) {
             client

@@ -78,10 +78,15 @@ extension AppStoreConnectClient {
         let workflows = try await ciResolveWorkflows(
             workflowID: workflowID, productID: productID, appID: appID)
 
+        // One lookup per workflow, issued concurrently; the newest-run comparison below
+        // still walks them in workflow order, so ties resolve exactly as before.
+        let newestFailed = try await workflows.concurrentMap { workflow in
+            try await self.ciBuildRuns(workflowID: workflow.id, limit: 1, failedOnly: true).data.first
+        }
+
         var best: (id: String, name: String?, run: CIBuildRun)?
-        for workflow in workflows {
-            let failed = try await ciBuildRuns(workflowID: workflow.id, limit: 1, failedOnly: true)
-            guard let run = failed.data.first else { continue }
+        for (workflow, newest) in zip(workflows, newestFailed) {
+            guard let run = newest else { continue }
             if let current = best, !Self.isNewer(run, than: current.run) { continue }
             best = (workflow.id, workflow.attributes?.name, run)
         }
@@ -113,11 +118,10 @@ extension AppStoreConnectClient {
         }
         if let appID {
             let products = try await ciProducts(appID: appID).data
-            var workflows: [CIWorkflow] = []
-            for product in products {
-                workflows += try await ciWorkflows(productID: product.id).data
+            let perProduct = try await products.concurrentMap { product in
+                try await self.ciWorkflows(productID: product.id).data
             }
-            return workflows
+            return perProduct.flatMap { $0 }
         }
         throw ASCError.invalidConfiguration(
             reason: "ciLatestFailureReport needs one of workflow_id, product_id, or app_id."

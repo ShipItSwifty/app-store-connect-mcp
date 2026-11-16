@@ -95,26 +95,32 @@ struct CIArtifactDownloadTests {
             "xcodebuild.log": "** BUILD SUCCEEDED **\n",
             "ci_post_xcodebuild.sh.log": "+ swiftlint --strict\n/src/A.swift:3:1: error: script phase failed\n",
         ])
-        let client = makeClient(responses: [
-            .json(["data": ["id": "run-1", "attributes": ["number": 1, "completionStatus": "FAILED"]]]),
-            .json([
-                "data": [
-                    ["id": "act-1", "attributes": ["name": "Archive", "actionType": "ARCHIVE", "completionStatus": "FAILED"]]
-                ]
-            ]),
-            .json(["data": [String]()]),
-            .json(["data": [String]()]),
-            .json([
-                "data": [
-                    [
-                        "id": "ar-1",
-                        "attributes": [
-                            "fileType": "LOG_BUNDLE", "fileName": "logs.zip", "downloadUrl": "https://dl/logs.zip",
-                        ],
+        let client = makeClientRouting([
+            (
+                "/ciBuildRuns/run-1/actions",
+                .json([
+                    "data": [
+                        ["id": "act-1", "attributes": ["name": "Archive", "actionType": "ARCHIVE", "completionStatus": "FAILED"]]
                     ]
-                ]
-            ]),
-            .response(statusCode: 200, headers: [:], body: zip),
+                ])
+            ),
+            ("/ciBuildRuns/run-1", .json(["data": ["id": "run-1", "attributes": ["number": 1, "completionStatus": "FAILED"]]])),
+            ("/issues", .json(["data": [String]()])),
+            ("/testResults", .json(["data": [String]()])),
+            (
+                "/artifacts",
+                .json([
+                    "data": [
+                        [
+                            "id": "ar-1",
+                            "attributes": [
+                                "fileType": "LOG_BUNDLE", "fileName": "logs.zip", "downloadUrl": "https://dl/logs.zip",
+                            ],
+                        ]
+                    ]
+                ])
+            ),
+            ("dl/logs.zip", .response(statusCode: 200, headers: [:], body: zip)),
         ])
 
         let result = try await client.ciFailureReportWithLogs(buildRunID: "run-1")
@@ -124,32 +130,36 @@ struct CIArtifactDownloadTests {
 
     @Test("ciFailureReportWithLogs attaches parsed findings and notes skipped binaries")
     func failureReportWithLogs() async throws {
-        let client = makeClient(responses: [
-            // ciBuildRun
-            .json(["data": ["id": "run-1", "attributes": ["number": 3, "completionStatus": "FAILED"]]]),
-            // ciBuildActions
-            .json([
-                "data": [
-                    ["id": "act-1", "attributes": ["name": "Build", "actionType": "BUILD", "completionStatus": "FAILED"]]
-                ]
-            ]),
-            // issues for act-1
-            .json(["data": [String]()]),
-            // testResults for act-1
-            .json(["data": [String]()]),
-            // artifacts for act-1: one text log, one binary bundle
-            .json([
-                "data": [
-                    ["id": "ar-1", "attributes": ["fileType": "LOG", "fileName": "xcodebuild.log", "downloadUrl": "https://dl/x.log"]],
-                    ["id": "ar-2", "attributes": ["fileType": "LOG_BUNDLE", "fileName": "all.zip", "downloadUrl": "https://dl/all.zip"]],
-                ]
-            ]),
-            // download of xcodebuild.log
-            .response(
-                statusCode: 200,
-                headers: [:],
-                body: Data("Sources/A.swift:2:1: error: boom\n".utf8)
+        let client = makeClientRouting([
+            (
+                "/ciBuildRuns/run-1/actions",
+                .json([
+                    "data": [
+                        ["id": "act-1", "attributes": ["name": "Build", "actionType": "BUILD", "completionStatus": "FAILED"]]
+                    ]
+                ])
             ),
+            ("/ciBuildRuns/run-1", .json(["data": ["id": "run-1", "attributes": ["number": 3, "completionStatus": "FAILED"]]])),
+            ("/issues", .json(["data": [String]()])),
+            ("/testResults", .json(["data": [String]()])),
+            // One text log and one bundle; the bundle's URL has no route, so its
+            // download fails and must land in skippedArtifacts, not sink the report.
+            (
+                "/artifacts",
+                .json([
+                    "data": [
+                        [
+                            "id": "ar-1",
+                            "attributes": ["fileType": "LOG", "fileName": "xcodebuild.log", "downloadUrl": "https://dl/x.log"],
+                        ],
+                        [
+                            "id": "ar-2",
+                            "attributes": ["fileType": "LOG_BUNDLE", "fileName": "all.zip", "downloadUrl": "https://dl/all.zip"],
+                        ],
+                    ]
+                ])
+            ),
+            ("dl/x.log", .response(statusCode: 200, headers: [:], body: Data("Sources/A.swift:2:1: error: boom\n".utf8))),
         ])
 
         let result = try await client.ciFailureReportWithLogs(buildRunID: "run-1", workflowName: "Release")
