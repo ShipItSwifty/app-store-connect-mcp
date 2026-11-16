@@ -248,6 +248,56 @@ enum AppStoreTools {
         },
 
         ToolSpec(
+            name: "asc_list_in_app_purchases",
+            description: """
+                List an app's in-app purchases — consumables, non-consumables, and \
+                non-renewing subscriptions — with product id, type, and review state. Filter \
+                by state (e.g. DEVELOPER_ACTION_NEEDED, REJECTED, MISSING_METADATA) to find \
+                what blocks a submission. Auto-renewable subscriptions are listed by \
+                asc_list_subscriptions instead. Pass either app_id or bundle_id.
+                """,
+            arguments: [
+                .string("app_id", "App Store Connect app id (or pass bundle_id)."),
+                .string("bundle_id", "Bundle identifier, resolved to an app id."),
+                .string("type", "CONSUMABLE, NON_CONSUMABLE, or NON_RENEWING_SUBSCRIPTION."),
+                .string("state", "Review state to filter on, e.g. READY_TO_SUBMIT or REJECTED."),
+                .integer("limit", "Max purchases to return (default 200)."),
+            ]
+        ) { args, makeClient in
+            let client = try makeClient()
+            return try json(
+                await client.inAppPurchases(
+                    appID: try await resolveAppID(args, client: client),
+                    type: args.string("type"),
+                    state: args.string("state"),
+                    limit: args.int("limit", default: 200)
+                ))
+        },
+
+        ToolSpec(
+            name: "asc_list_subscriptions",
+            description: """
+                List an app's auto-renewable subscriptions, grouped by subscription group, \
+                each group ordered from the highest level of service down: product id, \
+                period, group level, and review state. Costs one request plus one per group. \
+                Filter by state to find subscriptions that need attention. Pass either \
+                app_id or bundle_id.
+                """,
+            arguments: [
+                .string("app_id", "App Store Connect app id (or pass bundle_id)."),
+                .string("bundle_id", "Bundle identifier, resolved to an app id."),
+                .string("state", "Review state to filter subscriptions on, e.g. REJECTED."),
+            ]
+        ) { args, makeClient in
+            let client = try makeClient()
+            return try json(
+                await client.subscriptionCatalog(
+                    appID: try await resolveAppID(args, client: client),
+                    state: args.string("state")
+                ))
+        },
+
+        ToolSpec(
             name: "asc_rate_limit_status",
             description: """
                 Report this key's current App Store Connect hourly rate-limit position: the \

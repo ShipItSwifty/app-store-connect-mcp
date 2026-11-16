@@ -39,7 +39,21 @@ permissions, so a key that reads CI builds can still receive `403` here.
 Sales reports return `nil` for Apple's `404` response, including dates with no
 report or data that has not been processed yet.
 
+### Finance reports
+
+```swift
+let proceeds = try await client.financeReport(
+    vendorNumber: "YOUR_VENDOR_NUMBER", reportDate: "2026-09", reportType: "FINANCIAL"
+)
+```
+
+`reportDate` is an Apple fiscal month, which does not line up with the calendar
+month, and a month's report appears only after it closes, so the current month
+returns `nil`. Leave `regionCode` out to get every region in one report: the client
+sends `ZZ` for `FINANCIAL` and `Z1` for `FINANCE_DETAIL`, which rejects `ZZ`. The
+key needs access to Payments and Financial Reports.
+
 ``ReportTable`` parses the downloaded text. Analytics segments use comma-separated
-data and sales reports use tab-separated data; gzip payloads are inflated before
+data, while sales and finance reports use tab-separated data; gzip payloads are inflated before
 parsing. Row limits keep responses manageable and should be raised when the
 caller needs more data.

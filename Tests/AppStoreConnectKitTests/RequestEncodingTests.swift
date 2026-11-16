@@ -81,6 +81,33 @@ struct RequestEncodingTests {
         #expect(attributes["whats_new"] == nil)
     }
 
+    @Test("Beta tester and review reply bodies keep camelCase keys")
+    func engagementBodiesAreCamelCase() async throws {
+        let bodies = LockedBox<[[String: Any]]>([])
+        let client = makeClientRecording(
+            observedBodies: bodies,
+            responses: [
+                .json(["data": ["id": "tst-1", "attributes": ["email": "a@example.com"]]], statusCode: 201),
+                .json(["data": ["id": "resp-1", "attributes": ["responseBody": "Thanks"]]], statusCode: 201),
+            ]
+        )
+
+        _ = try await client.inviteBetaTester(
+            email: "a@example.com", firstName: "Ada", lastName: "Lovelace", betaGroupIDs: ["grp-1"])
+        _ = try await client.respondToCustomerReview(reviewID: "rev-1", responseBody: "Thanks")
+
+        let tester = try #require(bodies.value.first?["data"] as? [String: Any])
+        let testerAttributes = try #require(tester["attributes"] as? [String: Any])
+        #expect(testerAttributes["firstName"] as? String == "Ada")
+        #expect(testerAttributes["first_name"] == nil)
+        #expect((tester["relationships"] as? [String: Any])?["betaGroups"] != nil)
+        #expect((tester["relationships"] as? [String: Any])?["beta_groups"] == nil)
+
+        let reply = try #require(bodies.value.last?["data"] as? [String: Any])
+        #expect((reply["attributes"] as? [String: Any])?["responseBody"] as? String == "Thanks")
+        #expect((reply["attributes"] as? [String: Any])?["response_body"] == nil)
+    }
+
     @Test("Responses decode camelCase attributes as the live API sends them")
     func decodesCamelCaseResponses() async throws {
         let client = makeClient(responses: [

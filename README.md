@@ -233,6 +233,8 @@ variables.
 | `asc_list_beta_testers` | `beta_group_id`, `limit?` | testers in a group, with invite type and state |
 | `asc_list_beta_feedback` | `app_id?` / `bundle_id?`, `kind?` (`crash` \| `screenshot`), `build_id?`, `device_model?`, `os_version?`, `limit?` | TestFlight tester feedback newest first — crash submissions with device state, or screenshots with the tester's comment and image URLs |
 | `asc_list_customer_reviews` | `app_id?` / `bundle_id?`, `rating?`, `territory?`, `limit?` | App Store reviews newest first, filterable by star rating and storefront |
+| `asc_list_in_app_purchases` | `app_id?` / `bundle_id?`, `type?`, `state?`, `limit?` | consumables, non-consumables, and non-renewing subscriptions with product id, type, and review state; filter `state` (e.g. `REJECTED`, `DEVELOPER_ACTION_NEEDED`) to find what blocks a submission |
+| `asc_list_subscriptions` | `app_id?` / `bundle_id?`, `state?` | auto-renewable subscriptions by group, each group ordered from the highest level of service down; one request plus one per group |
 | `asc_list_diagnostic_signatures` | `build_id?` / `app_id?` / `bundle_id?`, `diagnostic_type?` (`HANGS` \| `LAUNCHES` \| `DISK_WRITES`), `limit?` | hang, slow-launch and disk-write signatures real devices reported against a build (crashes come from TestFlight feedback, below), with `weight` and a regression insight (falls back to the app's newest build) |
 | `asc_get_diagnostic_logs` | `signature_id`, `limit?`, `max_frames?` | the call stacks behind a signature, **reduced to the frames Apple blames** — symbol, binary, file + line where symbolicated — with each report's app/OS version and device. `totalFrames` says how much was elided |
 | `asc_get_beta_crash_log` | `feedback_id` | the symbolicated crash log attached to a TestFlight crash submission; `{"available": false}` while Apple is still attaching it |
@@ -244,6 +246,7 @@ variables.
 | `asc_list_analytics_reports` | `app_id?` / `bundle_id?`, `category?`, `limit?` | the analytics report requests configured for an app and the reports under them. An empty list means nobody has created a request yet |
 | `asc_get_analytics_report` | `app_id?` / `bundle_id?`, `report_name?`, `category?`, `granularity?`, `processing_date?`, `max_rows?` | one report's data: walks request → report → newest instance → segment, inflates the gzipped CSV, and returns columns, capped rows, and the true row count |
 | `asc_sales_report` | `report_date`, `vendor_number?`, `frequency?`, `report_type?`, `report_sub_type?`, `version?`, `max_rows?` | a Sales and Trends report as a bounded table. Vendor number comes from the argument or `$ASC_VENDOR_NUMBER`. **Needs a Finance/Sales-role key**, not the Team key the `ci*` tools want |
+| `asc_finance_report` | `report_date` (fiscal `YYYY-MM`), `vendor_number?`, `report_type?` (`FINANCIAL` \| `FINANCE_DETAIL`), `region_code?`, `max_rows?` | a Payments and Financial Reports month as a bounded table; `region_code` defaults to all regions (`ZZ`, or `Z1` for `FINANCE_DETAIL`). Returns `found: false` until the fiscal month closes. Needs a key with access to Payments and Financial Reports |
 | `asc_rate_limit_status` | — | this key's hourly rate-limit position before you start a broad scan |
 | `asc_api_get` | `path`, `query?` | **escape hatch**: any authenticated `GET` against `/v1/…` or `/v2/…`, returned verbatim — appInfos, prices, in-app purchases, subscriptions, users, devices, certificates, and anything Apple ships next. Read-only by construction; a `links.next` URL can be pasted straight back as `path` |
 
@@ -271,6 +274,9 @@ naming the variable rather than "unknown tool".
 | `asc_update_app_info_localization` | `bundle_id`, `locale`, `name?`, `subtitle?` | updates the app name/subtitle for one locale at the app-info level — app-wide, not version-scoped, so it isn't blocked by review state |
 | `asc_submit_for_review` | `bundle_id`, `version_string?`, `automatic_release?`, `phased_release?` | **submits the app to App Review** — irreversible and public |
 | `asc_create_analytics_report_request` | `app_id?` / `bundle_id?`, `access_type?` | creates the analytics report request that makes `asc_get_analytics_report` return anything |
+| `asc_respond_to_review` | `review_id`, `text` | **posts a public reply** to a customer review, replacing any earlier reply; Apple screens it first, so it starts `PENDING_PUBLISH` |
+| `asc_add_build_to_beta_group` | `beta_group_id`, `build_id` | makes a build available to a TestFlight group; external groups still need beta app review |
+| `asc_invite_beta_tester` | `email`, `beta_group_id`, `first_name?`, `last_name?` | adds a tester to a group — **sends them a TestFlight invitation email** |
 
 **Structured output.** The aggregating tools — `asc_ci_failure_report`,
 `asc_ci_failure_report_with_logs`, `asc_ci_latest_failure`, `asc_submission_status`,

@@ -113,4 +113,40 @@ struct ReportingToolsTests {
         )
         #expect(text(missing).contains("\"found\":false"))
     }
+
+    @Test("asc_finance_report returns a table, and a month not yet closed as found:false")
+    func financeReport() async throws {
+        let found = try await call(
+            "asc_finance_report",
+            ["report_date": .string("2026-09"), "vendor_number": .string("80000123")],
+            [
+                .init(
+                    statusCode: 200,
+                    body: Data("Start Date\tPartner Share\n09/01/2026\t12.34\n".utf8),
+                    pathContains: "/v1/financeReports"
+                )
+            ]
+        )
+        #expect(text(found).contains("\"found\":true"))
+        #expect(text(found).contains("12.34"))
+        #expect(schemaViolations(found, tool: "asc_finance_report") == [])
+
+        let missing = try await call(
+            "asc_finance_report",
+            ["report_date": .string("2026-10"), "vendor_number": .string("80000123")],
+            [jsonCanned(["errors": [["detail": "not yet available"]]], statusCode: 404)]
+        )
+        #expect(text(missing).contains("\"found\":false"))
+        #expect(schemaViolations(missing, tool: "asc_finance_report") == [])
+    }
+
+    @Test("asc_finance_report asks for a vendor number instead of failing opaquely")
+    func financeReportNeedsVendor() async throws {
+        do {
+            _ = try await call("asc_finance_report", ["report_date": .string("2026-09")], [])
+            Issue.record("expected a configuration error")
+        } catch let error as ASCError {
+            #expect(error.localizedDescription.contains("ASC_VENDOR_NUMBER"))
+        }
+    }
 }

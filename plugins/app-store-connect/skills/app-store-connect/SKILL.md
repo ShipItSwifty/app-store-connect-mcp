@@ -90,6 +90,19 @@ Answer internal and external availability separately.
 
 Say when stacks are unsymbolicated rather than guessing at a cause.
 
+### In-app purchases, subscriptions, and revenue
+
+- **What's blocking an IAP or subscription?** `asc_list_in_app_purchases` (consumables,
+  non-consumables, non-renewing) and `asc_list_subscriptions` (auto-renewable, by
+  group), filtered by `state` — `MISSING_METADATA`, `DEVELOPER_ACTION_NEEDED`, and
+  `REJECTED` are the ones that need the developer. A first IAP or subscription must be
+  submitted with an app version; say so when the app version is also pending.
+- **Revenue**: `asc_sales_report` for units and sales by day/week/month,
+  `asc_finance_report` for proceeds by Apple fiscal month. Fiscal months don't match
+  calendar months and appear only after they close, so `found: false` for the current
+  month is expected. Both need the vendor number; a 403 means the key lacks access to
+  Sales or Payments and Financial Reports.
+
 ### Release health
 
 `asc_list_app_store_versions` → `asc_submission_status` (if not live) →
@@ -136,3 +149,8 @@ server runs with `ASC_ENABLE_WRITES=1`. If a user asks for one and it's disabled
 them how to enable it — don't route around it with other tools. Always confirm with the
 user before calling `asc_submit_for_review` (public and irreversible) or starting a
 build (spends compute minutes).
+
+The engagement writes sit behind the same flag: `asc_respond_to_review`,
+`asc_add_build_to_beta_group`, and `asc_invite_beta_tester`. Confirm before
+`asc_respond_to_review` (show the user the exact reply text — it is public) and before
+`asc_invite_beta_tester` (it emails the address you give it).

@@ -141,6 +141,48 @@ enum ReportingTools {
             guard let table else { return try json(SalesReportPayload(found: false, table: nil)) }
             return try json(SalesReportPayload(found: true, table: table))
         },
+
+        ToolSpec(
+            name: "asc_finance_report",
+            description: """
+                Download a finance report (Payments and Financial Reports) for one fiscal \
+                month as a bounded table: FINANCIAL for earnings and proceeds per region and \
+                currency, FINANCE_DETAIL for transaction-level detail. Apple's fiscal months \
+                don't line up with calendar months, and a month appears only after it \
+                closes; {"found": false} is the normal answer before then. Needs the vendor \
+                number ('vendor_number' or ASC_VENDOR_NUMBER). NOTE: needs an API key with \
+                access to Payments and Financial Reports — other keys get a 403 here.
+                """,
+            arguments: [
+                .string("report_date", "Fiscal month, YYYY-MM.", required: true),
+                .string("vendor_number", "Vendor number. Defaults to $ASC_VENDOR_NUMBER."),
+                .string("report_type", "FINANCIAL (default) or FINANCE_DETAIL."),
+                .string(
+                    "region_code",
+                    "Region code; omit for all regions (ZZ for FINANCIAL, Z1 for FINANCE_DETAIL)."
+                ),
+                .integer("max_rows", "Max data rows to return (default 100)."),
+            ],
+            outputSchema: CITools.salesReportOutputSchema
+        ) { args, makeClient in
+            guard let vendorNumber = args.string("vendor_number") ?? environmentVendorNumber() else {
+                throw ASCError.invalidConfiguration(
+                    reason: """
+                        Missing vendor number. Pass 'vendor_number', or set ASC_VENDOR_NUMBER. \
+                        Find it in App Store Connect under Payments and Financial Reports.
+                        """
+                )
+            }
+            let table = try await makeClient().financeReport(
+                vendorNumber: vendorNumber,
+                reportDate: args.require("report_date"),
+                reportType: args.string("report_type") ?? "FINANCIAL",
+                regionCode: args.string("region_code"),
+                maxRows: args.int("max_rows", default: defaultRowLimit, max: 1000)
+            )
+            guard let table else { return try json(SalesReportPayload(found: false, table: nil)) }
+            return try json(SalesReportPayload(found: true, table: table))
+        },
     ]
 
     // MARK: - Payloads

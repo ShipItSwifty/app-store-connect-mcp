@@ -221,4 +221,74 @@ struct WriteToolsTests {
         let data = try #require(MCPMockURLProtocol.lastRequestBody()?["data"] as? [String: Any])
         #expect((data["attributes"] as? [String: Any])?["accessType"] as? String == "ONGOING")
     }
+
+    @Test("asc_respond_to_review posts the reply text against the review")
+    func respondToReview() async throws {
+        let result = try await callWrite(
+            "asc_respond_to_review",
+            ["review_id": .string("rev-1"), "text": .string("Thanks, fixed in 2.1!")],
+            [
+                jsonCanned(
+                    [
+                        "data": [
+                            "id": "resp-1",
+                            "attributes": ["responseBody": "Thanks, fixed in 2.1!", "state": "PENDING_PUBLISH"],
+                        ]
+                    ],
+                    statusCode: 201
+                )
+            ]
+        )
+        #expect(text(result).contains("PENDING_PUBLISH"))
+
+        let data = try #require(MCPMockURLProtocol.lastRequestBody()?["data"] as? [String: Any])
+        #expect(data["type"] as? String == "customerReviewResponses")
+        #expect((data["attributes"] as? [String: Any])?["responseBody"] as? String == "Thanks, fixed in 2.1!")
+        let review = (data["relationships"] as? [String: Any])?["review"] as? [String: Any]
+        let identifier = review?["data"] as? [String: Any]
+        #expect(identifier?["type"] as? String == "customerReviews")
+        #expect(identifier?["id"] as? String == "rev-1")
+    }
+
+    @Test("asc_add_build_to_beta_group links the build and survives Apple's empty 204")
+    func addBuildToBetaGroup() async throws {
+        let result = try await callWrite(
+            "asc_add_build_to_beta_group",
+            ["beta_group_id": .string("grp-1"), "build_id": .string("bld-7")],
+            [.init(statusCode: 204, body: Data(), pathContains: "/v1/betaGroups/grp-1/relationships/builds")]
+        )
+        #expect(result.isError != true)
+        #expect(text(result).contains("\"buildID\":\"bld-7\""))
+
+        let linkages = try #require(MCPMockURLProtocol.lastRequestBody()?["data"] as? [[String: Any]])
+        #expect(linkages.count == 1)
+        #expect(linkages.first?["type"] as? String == "builds")
+        #expect(linkages.first?["id"] as? String == "bld-7")
+    }
+
+    @Test("asc_invite_beta_tester creates the tester in the group and omits names not given")
+    func inviteBetaTester() async throws {
+        let result = try await callWrite(
+            "asc_invite_beta_tester",
+            ["email": .string("tester@example.com"), "beta_group_id": .string("grp-1")],
+            [
+                jsonCanned(
+                    ["data": ["id": "tst-1", "attributes": ["email": "tester@example.com", "state": "INVITED"]]],
+                    statusCode: 201
+                )
+            ]
+        )
+        #expect(text(result).contains("INVITED"))
+
+        let data = try #require(MCPMockURLProtocol.lastRequestBody()?["data"] as? [String: Any])
+        #expect(data["type"] as? String == "betaTesters")
+        let attributes = try #require(data["attributes"] as? [String: Any])
+        #expect(attributes["email"] as? String == "tester@example.com")
+        #expect(attributes["firstName"] == nil)
+        #expect(attributes["first_name"] == nil)
+        let groups = ((data["relationships"] as? [String: Any])?["betaGroups"] as? [String: Any])?["data"]
+        let group = (groups as? [[String: Any]])?.first
+        #expect(group?["type"] as? String == "betaGroups")
+        #expect(group?["id"] as? String == "grp-1")
+    }
 }

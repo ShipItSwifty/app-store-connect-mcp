@@ -200,6 +200,74 @@ enum WriteTools {
         },
 
         ToolSpec(
+            name: "asc_respond_to_review",
+            description: """
+                Publish a developer reply to an App Store customer review, replacing any \
+                reply already posted (a review holds at most one). Get review ids from \
+                asc_list_customer_reviews. Apple screens the text first, so the reply starts \
+                as PENDING_PUBLISH. THIS POSTS A PUBLIC REPLY ON THE APP STORE — confirm the \
+                exact text with the user before calling.
+                """,
+            arguments: [
+                .string("review_id", "The customer review id.", required: true),
+                .string("text", "The reply text.", required: true),
+            ],
+            isReadOnly: false
+        ) { args, makeClient in
+            try json(
+                await makeClient().respondToCustomerReview(
+                    reviewID: args.require("review_id"),
+                    responseBody: args.require("text")
+                ))
+        },
+
+        ToolSpec(
+            name: "asc_add_build_to_beta_group",
+            description: """
+                Make a build available to a TestFlight beta group. Internal groups can \
+                install it once processing finishes; external groups also need beta app \
+                review (check asc_testflight_build_status). Get group ids from \
+                asc_list_beta_groups and build ids from asc_list_builds. THIS GIVES THE \
+                GROUP'S TESTERS ACCESS TO THE BUILD.
+                """,
+            arguments: [
+                .string("beta_group_id", "The beta group id.", required: true),
+                .string("build_id", "The build id.", required: true),
+            ],
+            isReadOnly: false
+        ) { args, makeClient in
+            let groupID = try args.require("beta_group_id")
+            let buildID = try args.require("build_id")
+            try await makeClient().addBuilds([buildID], toBetaGroup: groupID)
+            return try json(BuildGroupResult(betaGroupID: groupID, buildID: buildID))
+        },
+
+        ToolSpec(
+            name: "asc_invite_beta_tester",
+            description: """
+                Add a person to a TestFlight beta group by email. THIS SENDS THEM A \
+                TESTFLIGHT INVITATION EMAIL — confirm the address with the user before \
+                calling. A 409 usually means they are already a tester in that group. Get \
+                group ids from asc_list_beta_groups.
+                """,
+            arguments: [
+                .string("email", "The tester's email address.", required: true),
+                .string("beta_group_id", "The beta group to add them to.", required: true),
+                .string("first_name", "First name (optional)."),
+                .string("last_name", "Last name (optional)."),
+            ],
+            isReadOnly: false
+        ) { args, makeClient in
+            try json(
+                await makeClient().inviteBetaTester(
+                    email: args.require("email"),
+                    firstName: args.string("first_name"),
+                    lastName: args.string("last_name"),
+                    betaGroupIDs: [args.require("beta_group_id")]
+                ))
+        },
+
+        ToolSpec(
             name: "asc_create_analytics_report_request",
             description: """
                 Create an App Store analytics report request for an app, which is what makes \
@@ -244,6 +312,11 @@ enum WriteTools {
     private struct AppInfoLocalizationResult: Encodable {
         let appInfoID: String
         let locale: String
+    }
+
+    private struct BuildGroupResult: Encodable {
+        let betaGroupID: String
+        let buildID: String
     }
 
     private struct SubmissionResult: Encodable {

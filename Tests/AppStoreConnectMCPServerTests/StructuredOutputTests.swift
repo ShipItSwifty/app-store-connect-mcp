@@ -84,6 +84,7 @@ struct StructuredOutputTests {
         "asc_list_analytics_reports",
         "asc_get_analytics_report",
         "asc_sales_report",
+        "asc_finance_report",
     ]
 
     @Test("Exactly the report tools advertise an object outputSchema")
