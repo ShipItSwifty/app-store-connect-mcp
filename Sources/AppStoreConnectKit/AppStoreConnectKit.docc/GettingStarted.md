@@ -7,7 +7,7 @@ Create a client from an App Store Connect API key and choose how requests retry.
 Add the library product to your Swift package:
 
 ```swift
-.package(url: "https://github.com/ShipItSwifty/app-store-connect-mcp.git", from: "0.2.2")
+.package(url: "https://github.com/ShipItSwifty/app-store-connect-mcp.git", from: "0.3.0")
 ```
 
 Your target needs `.product(name: "AppStoreConnectKit", package: "app-store-connect-mcp")`.
