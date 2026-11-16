@@ -41,9 +41,67 @@ struct AppStoreToolsTests {
         for expected in [
             "asc_list_apps", "asc_list_builds", "asc_testflight_build_status",
             "asc_list_beta_feedback", "asc_list_customer_reviews", "asc_api_get",
+            "asc_list_in_app_purchases", "asc_list_subscriptions",
         ] {
             #expect(names.contains(expected))
         }
+    }
+
+    // MARK: - In-app purchases and subscriptions
+
+    @Test("asc_list_in_app_purchases returns the purchases with their type and state")
+    func listInAppPurchases() async throws {
+        let result = try await call(
+            "asc_list_in_app_purchases",
+            ["app_id": .string("123"), "state": .string("REJECTED")],
+            [
+                jsonCanned(
+                    [
+                        "data": [
+                            [
+                                "id": "iap-1",
+                                "attributes": [
+                                    "productId": "com.example.coins100", "inAppPurchaseType": "CONSUMABLE",
+                                    "state": "REJECTED", "familySharable": false,
+                                ],
+                            ]
+                        ]
+                    ],
+                    pathContains: "/v1/apps/123/inAppPurchasesV2"
+                )
+            ]
+        )
+        #expect(result.isError != true)
+        #expect(text(result).contains("com.example.coins100"))
+        #expect(text(result).contains("\"state\":\"REJECTED\""))
+    }
+
+    @Test("asc_list_subscriptions groups subscriptions and orders each group by level")
+    func listSubscriptions() async throws {
+        let result = try await call(
+            "asc_list_subscriptions",
+            ["app_id": .string("123")],
+            [
+                jsonCanned(
+                    ["data": [["id": "grp-1", "attributes": ["referenceName": "Pro"]]]],
+                    pathContains: "/v1/apps/123/subscriptionGroups"
+                ),
+                jsonCanned(
+                    [
+                        "data": [
+                            ["id": "sub-month", "attributes": ["productId": "pro.monthly", "groupLevel": 2]],
+                            ["id": "sub-year", "attributes": ["productId": "pro.yearly", "groupLevel": 1]],
+                        ]
+                    ],
+                    pathContains: "/v1/subscriptionGroups/grp-1/subscriptions"
+                ),
+            ]
+        )
+        let payload = text(result)
+        #expect(payload.contains("\"referenceName\":\"Pro\""))
+        let yearly = try #require(payload.range(of: "pro.yearly"))
+        let monthly = try #require(payload.range(of: "pro.monthly"))
+        #expect(yearly.lowerBound < monthly.lowerBound, "level 1 should be listed before level 2")
     }
 
     // MARK: - App resolution

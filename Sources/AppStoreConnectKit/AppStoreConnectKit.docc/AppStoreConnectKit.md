@@ -100,6 +100,13 @@ the collection is exhausted or `limit` resources have been collected. A non-nil
 - ``AppStoreReleaseService``
 - ``AppStoreSubmissionService``
 
+### In-app purchases and subscriptions
+
+- ``ASCInAppPurchase``
+- ``ASCSubscriptionGroup``
+- ``ASCSubscription``
+- ``ASCSubscriptionGroupDetail``
+
 ### Wire models
 
 - ``ASCResponse``
@@ -115,6 +122,7 @@ the collection is exhausted or `limit` resources have been collected. A non-nil
 - ``ASCBetaTester``
 - ``ASCBetaFeedback``
 - ``ASCCustomerReview``
+- ``ASCCustomerReviewResponse``
 - ``ASCPhasedRelease``
 - ``ASCReviewDetail``
 - ``ASCAppInfo``

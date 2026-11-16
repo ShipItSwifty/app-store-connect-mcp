@@ -224,6 +224,37 @@ public struct ASCCustomerReview: Codable, Sendable {
     }
 }
 
+/// A `customerReviewResponses` resource: the developer's public reply to a review.
+public struct ASCCustomerReviewResponse: Codable, Sendable {
+    /// Unique identifier for this response.
+    public let id: String
+    /// Response attributes.
+    public let attributes: Attributes?
+
+    /// Creates an `ASCCustomerReviewResponse`.
+    public init(id: String, attributes: Attributes? = nil) {
+        self.id = id
+        self.attributes = attributes
+    }
+
+    /// Attributes of a review response.
+    public struct Attributes: Codable, Sendable {
+        /// The reply text.
+        public let responseBody: String?
+        /// When the reply was last changed (ISO 8601).
+        public let lastModifiedDate: String?
+        /// `PENDING_PUBLISH` until Apple shows it on the store, then `PUBLISHED`.
+        public let state: String?
+
+        /// Creates `ASCCustomerReviewResponse.Attributes`.
+        public init(responseBody: String? = nil, lastModifiedDate: String? = nil, state: String? = nil) {
+            self.responseBody = responseBody
+            self.lastModifiedDate = lastModifiedDate
+            self.state = state
+        }
+    }
+}
+
 /// A TestFlight feedback submission — a crash report or a screenshot with a comment.
 ///
 /// `betaFeedbackCrashSubmissions` and `betaFeedbackScreenshotSubmissions` share every

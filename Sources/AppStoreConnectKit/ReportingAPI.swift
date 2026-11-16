@@ -356,9 +356,55 @@ extension AppStoreConnectClient {
             "filter[reportSubType]": reportSubType,
         ]
         if let version { query["filter[version]"] = version }
+        return try await gzippedReportTable("/v1/salesReports", query: query, maxRows: maxRows)
+    }
 
+    /// Downloads a finance report (Payments and Financial Reports) as a table.
+    ///
+    /// - Parameters:
+    ///   - vendorNumber: The vendor number from Payments and Financial Reports.
+    ///   - reportDate: The fiscal month, `YYYY-MM`. Apple's fiscal months don't match
+    ///     calendar months, and a month's report appears only after it closes.
+    ///   - reportType: `FINANCIAL` (earnings per region and currency) or
+    ///     `FINANCE_DETAIL` (transaction-level detail).
+    ///   - regionCode: A region code from App Store Connect's "Financial report regions
+    ///     and currencies" reference, or `nil` for every region in one report: `ZZ`
+    ///     for `FINANCIAL`, `Z1` for `FINANCE_DETAIL` (which answers `ZZ` with a 404).
+    ///   - maxRows: Rows to keep.
+    /// - Returns: The table, or `nil` when Apple has no report for that month and
+    ///   region (a 404 — the normal answer for a month not yet closed).
+    /// - Note: Needs a key with access to Payments and Financial Reports; a key without
+    ///   it gets a 403 here while other calls still succeed.
+    public func financeReport(
+        vendorNumber: String,
+        reportDate: String,
+        reportType: String = "FINANCIAL",
+        regionCode: String? = nil,
+        maxRows: Int = 200
+    ) async throws -> ReportTable? {
+        let query: [String: String] = [
+            "filter[vendorNumber]": vendorNumber,
+            "filter[reportDate]": reportDate,
+            "filter[regionCode]": regionCode ?? Self.allRegionsCode(forFinanceReportType: reportType),
+            "filter[reportType]": reportType,
+        ]
+        return try await gzippedReportTable("/v1/financeReports", query: query, maxRows: maxRows)
+    }
+
+    /// The region code that covers every region for a finance report type.
+    static func allRegionsCode(forFinanceReportType reportType: String) -> String {
+        reportType.uppercased() == "FINANCE_DETAIL" ? "Z1" : "ZZ"
+    }
+
+    /// Fetches a tab-separated, usually gzipped report and parses it, treating a 404
+    /// ("no report for that date") as `nil` rather than an error.
+    private func gzippedReportTable(
+        _ path: String,
+        query: [String: String],
+        maxRows: Int
+    ) async throws -> ReportTable? {
         do {
-            let data = try await getRaw("/v1/salesReports", query: query)
+            let data = try await getRaw(path, query: query)
             let text =
                 Gzip.looksLikeGzip(data) ? try Gzip.decompressText(data) : String(decoding: data, as: UTF8.self)
             return ReportTable(text: text, separator: "\t", maxRows: maxRows)

@@ -23,6 +23,10 @@ enum ServerInstructions {
         - "What is crashing or hanging?": asc_list_beta_feedback (kind crash) for TestFlight \
         crash logs; asc_list_diagnostic_signatures then asc_get_diagnostic_logs for hangs, \
         slow launches, and disk writes.
+        - "Which in-app purchases or subscriptions need attention?": asc_list_in_app_purchases \
+        and asc_list_subscriptions, filtered by state.
+        - Revenue: asc_sales_report (units, daily) or asc_finance_report (proceeds, per \
+        fiscal month); both need the vendor number.
         - Anything without a typed tool: asc_api_get with a /v1/ path.
 
         Budget: Apple enforces an hourly request limit per key, and the aggregating tools \
