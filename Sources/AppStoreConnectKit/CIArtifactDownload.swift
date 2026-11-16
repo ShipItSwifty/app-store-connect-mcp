@@ -168,40 +168,32 @@ extension AppStoreConnectClient {
     ) async throws -> CIFailureReportWithLogs {
         let report = try await ciFailureReport(buildRunID: buildRunID, workflowName: workflowName)
 
+        // Artifact downloads go to Apple's signed asset host, not the rate-limited API,
+        // so every artifact of every failed action is fetched concurrently. The flat job
+        // list keeps action and artifact order, so findings and notes come out in the
+        // same order the sequential loop produced.
+        let jobs = report.failedActions.enumerated().flatMap { index, action in
+            action.artifacts.compactMap { artifact -> ArtifactJob? in
+                guard let url = artifact.downloadUrl, !url.isEmpty else { return nil }
+                return ArtifactJob(actionIndex: index, label: action.name ?? action.id, artifact: artifact, url: url)
+            }
+        }
+        let outcomes = try await jobs.concurrentMap(maxConcurrency: Self.artifactDownloadLimit) { job in
+            await self.analyzeArtifact(job, parser: parser)
+        }
+
         var findingsByAction: [String: CILogAnalysis] = [:]
         var skipped: [String] = []
 
-        for action in report.failedActions {
+        for (index, action) in report.failedActions.enumerated() {
             var merged: [CILogFinding] = []
             var linesScanned = 0
-            let label = action.name ?? action.id
-            for artifact in action.artifacts {
-                guard let downloadURL = artifact.downloadUrl, !downloadURL.isEmpty else { continue }
-                let artifactName = artifact.fileName ?? "artifact"
-
-                if Self.looksLikeTextLog(artifact) {
-                    do {
-                        let analysis = try await analyzeArtifactLog(from: downloadURL, parser: parser)
-                        merged.append(contentsOf: analysis.findings)
-                        linesScanned += analysis.linesScanned
-                    } catch {
-                        skipped.append("\(label): \(artifactName) — \(error.localizedDescription)")
-                    }
-                } else if Self.looksLikeLogBundle(artifact) {
-                    do {
-                        let data = try await downloadArtifact(from: downloadURL)
-                        let bundle = Self.analyzeLogBundle(data, parser: parser)
-                        if let analysis = bundle.analysis {
-                            merged.append(contentsOf: analysis.findings)
-                            linesScanned += analysis.linesScanned
-                        }
-                        skipped.append(contentsOf: bundle.skipped.map { "\(label): \(artifactName) → \($0)" })
-                    } catch {
-                        skipped.append("\(label): \(artifactName) — \(error.localizedDescription)")
-                    }
-                } else {
-                    skipped.append("\(label): \(artifactName) (\(artifact.fileType ?? "unknown type"))")
+            for (job, outcome) in zip(jobs, outcomes) where job.actionIndex == index {
+                if let analysis = outcome.analysis {
+                    merged.append(contentsOf: analysis.findings)
+                    linesScanned += analysis.linesScanned
                 }
+                skipped.append(contentsOf: outcome.skipped)
             }
             if !merged.isEmpty || linesScanned > 0 {
                 findingsByAction[action.id] = CILogAnalysis(findings: merged, linesScanned: linesScanned)
@@ -212,6 +204,51 @@ extension AppStoreConnectClient {
             report: report,
             logFindingsByAction: findingsByAction,
             skippedArtifacts: skipped
+        )
+    }
+
+    /// Artifacts downloaded at once. Lower than ``ascFanOutLimit`` because each one is
+    /// held in memory whole while it is inflated and parsed.
+    static let artifactDownloadLimit = 3
+
+    /// One artifact to fetch for ``ciFailureReportWithLogs(buildRunID:workflowName:parser:)``.
+    struct ArtifactJob: Sendable {
+        let actionIndex: Int
+        let label: String
+        let artifact: CIFailureReport.FailedAction.Artifact
+        let url: String
+    }
+
+    /// What one artifact contributed: parsed findings, and notes on what was skipped.
+    struct ArtifactOutcome: Sendable {
+        var analysis: CILogAnalysis?
+        var skipped: [String] = []
+    }
+
+    /// Downloads and parses one artifact. Never throws: a failure becomes a skip note so
+    /// one expired URL does not sink the whole report.
+    func analyzeArtifact(_ job: ArtifactJob, parser: CILogParser) async -> ArtifactOutcome {
+        let artifactName = job.artifact.fileName ?? "artifact"
+        if Self.looksLikeTextLog(job.artifact) {
+            do {
+                return ArtifactOutcome(analysis: try await analyzeArtifactLog(from: job.url, parser: parser))
+            } catch {
+                return ArtifactOutcome(skipped: ["\(job.label): \(artifactName) — \(error.localizedDescription)"])
+            }
+        }
+        if Self.looksLikeLogBundle(job.artifact) {
+            do {
+                let bundle = Self.analyzeLogBundle(try await downloadArtifact(from: job.url), parser: parser)
+                return ArtifactOutcome(
+                    analysis: bundle.analysis,
+                    skipped: bundle.skipped.map { "\(job.label): \(artifactName) → \($0)" }
+                )
+            } catch {
+                return ArtifactOutcome(skipped: ["\(job.label): \(artifactName) — \(error.localizedDescription)"])
+            }
+        }
+        return ArtifactOutcome(
+            skipped: ["\(job.label): \(artifactName) (\(job.artifact.fileType ?? "unknown type"))"]
         )
     }
 

@@ -43,7 +43,17 @@ let client = AppStoreConnectClient(credentials: credentials, retryPolicy: .disab
 ```
 
 ``RateLimiter`` separately delays requests when the hourly quota is nearly used;
-disabling transient retries does not disable this throttling.
+disabling transient retries does not disable this throttling. Past 90% usage it
+spaces requests 5 seconds apart, and concurrent requests queue for their turn. Pass
+your own limiter to change that, or share one between clients on the same key:
+
+```swift
+let limiter = RateLimiter(throttleThreshold: 0.9, minBackoff: .seconds(5), maxBackoff: .seconds(5))
+let client = AppStoreConnectClient(credentials: credentials, rateLimiter: limiter)
+```
+
+A `minBackoff` below `maxBackoff` slows down more gradually but spends the last of
+the hourly budget faster, so it reaches Apple's hard limit (and its 429s) sooner.
 
 Typed list methods collect pages up to their `limit`. A non-nil `links.next` means
 more resources exist. Generic `get` retrieves one page; `getAll` walks pages.

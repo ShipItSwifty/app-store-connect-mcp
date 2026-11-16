@@ -39,14 +39,25 @@ enum ReportingTools {
             let appID = try await AppStoreTools.resolveAppID(args, client: client)
             let requests = try await client.analyticsReportRequests(appID: appID).data
 
-            var described: [AnalyticsRequestSummary] = []
-            for request in requests {
-                let reports = try await client.analyticsReports(
-                    requestID: request.id,
-                    category: args.string("category"),
-                    limit: args.int("limit", default: 200)
-                ).data
-                described.append(AnalyticsRequestSummary(request: request, reports: reports))
+            let category = args.string("category")
+            let limit = args.int("limit", default: 200)
+            // One reports lookup per request, issued together and reassembled in the
+            // order Apple listed the requests.
+            let reportsByIndex = try await withThrowingTaskGroup(of: (Int, [ASCAnalyticsReport]).self) { group in
+                for (index, request) in requests.enumerated() {
+                    group.addTask {
+                        let reports = try await client.analyticsReports(
+                            requestID: request.id, category: category, limit: limit
+                        ).data
+                        return (index, reports)
+                    }
+                }
+                var collected: [Int: [ASCAnalyticsReport]] = [:]
+                for try await (index, reports) in group { collected[index] = reports }
+                return collected
+            }
+            let described = requests.enumerated().map { index, request in
+                AnalyticsRequestSummary(request: request, reports: reportsByIndex[index] ?? [])
             }
             return try json(AnalyticsCatalog(appID: appID, requests: described))
         },

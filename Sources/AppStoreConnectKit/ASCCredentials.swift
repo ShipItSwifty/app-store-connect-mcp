@@ -64,11 +64,14 @@ extension AppStoreConnectClient {
     ///   - session: URL session used for outbound HTTP requests.
     ///   - retryPolicy: How transient API failures are retried. Use
     ///     ``TransientRetryPolicy/disabled`` to make each request once.
+    ///   - rateLimiter: Paces requests once the hourly budget runs low. Share one
+    ///     instance between clients that use the same key so they pace together.
     public init(
         credentials: ASCCredentials,
         serverURL: URL? = nil,
         session: URLSession = .shared,
-        retryPolicy: TransientRetryPolicy = .default
+        retryPolicy: TransientRetryPolicy = .default,
+        rateLimiter: RateLimiter = RateLimiter()
     ) {
         self.init(
             keyID: credentials.keyID,
@@ -76,7 +79,8 @@ extension AppStoreConnectClient {
             privateKeyData: credentials.privateKeyData,
             serverURL: serverURL,
             session: session,
-            retryPolicy: retryPolicy
+            retryPolicy: retryPolicy,
+            rateLimiter: rateLimiter
         )
     }
 }

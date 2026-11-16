@@ -267,6 +267,8 @@ naming the variable rather than "unknown tool".
 | `asc_ci_start_build` | `workflow_id`, `git_reference_id?`, `clean?` | starts a real Xcode Cloud build (consumes compute minutes) |
 | `asc_ci_rerun_build` | `build_run_id`, `clean?` | re-runs a build run, reusing its workflow **and git reference**, so the retry builds the same commit |
 | `asc_update_whats_new` | `bundle_id`, `locale`, `text` | sets the release notes for one locale on the latest version; fails once that version is in review |
+| `asc_update_version_localization` | `bundle_id`, `locale`, `description?`, `keywords?`, `promotional_text?` | updates description/keywords/promotional text for one locale on the latest version — only the fields passed are changed. `description`/`keywords` lock once the version is in review; `promotional_text` stays editable on a `READY_FOR_SALE` version |
+| `asc_update_app_info_localization` | `bundle_id`, `locale`, `name?`, `subtitle?` | updates the app name/subtitle for one locale at the app-info level — app-wide, not version-scoped, so it isn't blocked by review state |
 | `asc_submit_for_review` | `bundle_id`, `version_string?`, `automatic_release?`, `phased_release?` | **submits the app to App Review** — irreversible and public |
 | `asc_create_analytics_report_request` | `app_id?` / `bundle_id?`, `access_type?` | creates the analytics report request that makes `asc_get_analytics_report` return anything |
 
@@ -487,9 +489,14 @@ swift build
 swift test --enable-code-coverage --no-parallel
 MIN_LINE_COVERAGE=85 scripts/coverage-gate.sh
 xcrun swift-format lint --recursive --strict --configuration .swift-format Sources Tests
+python3 scripts/check-plugin.py
 ```
 
-CI runs all four on macOS plus a Linux build and test (`swift:6.3-noble`).
+CI runs all five on macOS, plus the downstream consumer check
+(`python3 scripts/check-package-consumer.py`), the MCP smoke test
+(`python3 scripts/smoke-mcp.py <binary>`), and a Linux build and test
+(`swift:6.3-noble`). Run the tests with `--no-parallel`: the MCP tool tests share one
+mock response queue.
 
 Build the documentation locally:
 

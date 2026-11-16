@@ -237,60 +237,16 @@ extension AppStoreConnectClient {
     ///   - buildRunID: The build run id.
     ///   - workflowName: Optional workflow name to embed in the report for context.
     public func ciFailureReport(buildRunID: String, workflowName: String? = nil) async throws -> CIFailureReport {
-        let run = try await ciBuildRun(id: buildRunID).data
-        let actions = try await ciBuildActions(buildRunID: buildRunID).data
+        async let runResponse = ciBuildRun(id: buildRunID)
+        async let actionsResponse = ciBuildActions(buildRunID: buildRunID)
+        let run = try await runResponse.data
+        let actions = try await actionsResponse.data
 
-        var failed: [CIFailureReport.FailedAction] = []
-
-        for action in actions where action.isUnsuccessful {
-
-            // Sequential on purpose: keeps ordering deterministic and avoids
-            // firing 3 concurrent requests per failed action at a rate-limited API.
-            let issuesResp = try await ciIssues(buildActionID: action.id)
-            let testsResp = try await ciTestResults(buildActionID: action.id)
-            let artifactsResp = try await ciArtifacts(buildActionID: action.id)
-
-            let issues = issuesResp.data.map { issue in
-                CIFailureReport.FailedAction.Issue(
-                    type: issue.attributes?.issueType,
-                    message: issue.attributes?.message,
-                    path: issue.attributes?.fileSource?.path,
-                    line: issue.attributes?.fileSource?.lineNumber
-                )
-            }
-            let failedTests =
-                testsResp.data
-                .filter { ($0.attributes?.status ?? "").uppercased().contains("FAIL") }
-                .map { result in
-                    CIFailureReport.FailedAction.FailedTest(
-                        className: result.attributes?.className,
-                        name: result.attributes?.name,
-                        status: result.attributes?.status,
-                        message: result.attributes?.message
-                    )
-                }
-            let artifacts = artifactsResp.data.map { artifact in
-                CIFailureReport.FailedAction.Artifact(
-                    fileType: artifact.attributes?.fileType,
-                    fileName: artifact.attributes?.fileName,
-                    downloadUrl: artifact.attributes?.downloadUrl
-                )
-            }
-
-            failed.append(
-                CIFailureReport.FailedAction(
-                    id: action.id,
-                    name: action.attributes?.name,
-                    actionType: action.attributes?.actionType,
-                    completionStatus: action.attributes?.completionStatus,
-                    startedDate: action.attributes?.startedDate,
-                    finishedDate: action.attributes?.finishedDate,
-                    durationSeconds: action.durationSeconds,
-                    issues: issues,
-                    failedTests: failedTests,
-                    artifacts: artifacts
-                )
-            )
+        // Each failed action costs three requests whatever their order, so fetching
+        // them concurrently spends the same hourly budget in a fraction of the time.
+        // `concurrentMap` keeps the actions in the order Apple returned them.
+        let failed = try await actions.filter(\.isUnsuccessful).concurrentMap { action in
+            try await self.failedActionDetail(action)
         }
 
         return CIFailureReport(
@@ -304,6 +260,56 @@ extension AppStoreConnectClient {
             finishedDate: run.attributes?.finishedDate,
             durationSeconds: run.durationSeconds,
             failedActions: failed
+        )
+    }
+
+    /// Collects one failed action's issues, failed tests, and artifacts.
+    private func failedActionDetail(_ action: CIBuildAction) async throws -> CIFailureReport.FailedAction {
+        async let issuesResponse = ciIssues(buildActionID: action.id)
+        async let testsResponse = ciTestResults(buildActionID: action.id)
+        async let artifactsResponse = ciArtifacts(buildActionID: action.id)
+        let issuesResp = try await issuesResponse
+        let testsResp = try await testsResponse
+        let artifactsResp = try await artifactsResponse
+
+        let issues = issuesResp.data.map { issue in
+            CIFailureReport.FailedAction.Issue(
+                type: issue.attributes?.issueType,
+                message: issue.attributes?.message,
+                path: issue.attributes?.fileSource?.path,
+                line: issue.attributes?.fileSource?.lineNumber
+            )
+        }
+        let failedTests =
+            testsResp.data
+            .filter { ($0.attributes?.status ?? "").uppercased().contains("FAIL") }
+            .map { result in
+                CIFailureReport.FailedAction.FailedTest(
+                    className: result.attributes?.className,
+                    name: result.attributes?.name,
+                    status: result.attributes?.status,
+                    message: result.attributes?.message
+                )
+            }
+        let artifacts = artifactsResp.data.map { artifact in
+            CIFailureReport.FailedAction.Artifact(
+                fileType: artifact.attributes?.fileType,
+                fileName: artifact.attributes?.fileName,
+                downloadUrl: artifact.attributes?.downloadUrl
+            )
+        }
+
+        return CIFailureReport.FailedAction(
+            id: action.id,
+            name: action.attributes?.name,
+            actionType: action.attributes?.actionType,
+            completionStatus: action.attributes?.completionStatus,
+            startedDate: action.attributes?.startedDate,
+            finishedDate: action.attributes?.finishedDate,
+            durationSeconds: action.durationSeconds,
+            issues: issues,
+            failedTests: failedTests,
+            artifacts: artifacts
         )
     }
 }

@@ -48,41 +48,95 @@ public struct RateLimitStatus: Codable, Sendable {
 /// ```
 public actor RateLimiter {
     /// The fraction of the limit at which throttling begins (0.9 = 90% used).
-    public let throttleThreshold: Double
+    public nonisolated let throttleThreshold: Double
+
+    /// The pause between two throttled requests as usage first crosses
+    /// ``throttleThreshold``.
+    public nonisolated let minBackoff: Duration
+
+    /// The pause between two throttled requests once nothing remains. The pause grows
+    /// linearly from ``minBackoff`` to this across the throttle band.
+    public nonisolated let maxBackoff: Duration
 
     private var hourlyLimit: Int?
     private var hourlyRemaining: Int?
     /// When a complete `X-Rate-Limit` header was last parsed. Package-internal so
     /// tests can age it without sleeping.
     private(set) var lastUpdated: ContinuousClock.Instant?
+    /// The earliest moment the next throttled request may go out. Shared by every
+    /// caller, so concurrent requests queue behind one another instead of all
+    /// sleeping the same backoff and then firing together.
+    private var nextThrottledSlot: ContinuousClock.Instant?
     private let logger = Logger.forType(subsystem: "AppStoreConnectKit", RateLimiter.self)
 
     /// Creates a `RateLimiter`.
     ///
-    /// - Parameter throttleThreshold: Fraction (0–1) of hourly limit at which to pause.
-    ///   Defaults to `0.9` (pause when 90% of the limit is consumed).
-    public init(throttleThreshold: Double = 0.9) {
+    /// - Parameters:
+    ///   - throttleThreshold: Fraction (0–1) of hourly limit at which to pause.
+    ///     Defaults to `0.9` (pause when 90% of the limit is consumed).
+    ///   - minBackoff: The pause between throttled requests at the threshold.
+    ///   - maxBackoff: The pause between throttled requests once nothing remains.
+    ///
+    /// Both pauses default to 5 seconds: a flat pace of one request per 5 s past the
+    /// threshold, which stretches the last 10% of a 3,500-request hour over ~29 minutes.
+    /// A lower `minBackoff` slows a long investigation more gradually, but spends that
+    /// reserve faster (0.5 s → 5 s gets through it in ~16 minutes) and so reaches
+    /// Apple's hard limit, and its 429s, sooner. Lower it only on a key nothing else
+    /// shares.
+    public init(
+        throttleThreshold: Double = 0.9,
+        minBackoff: Duration = .seconds(5),
+        maxBackoff: Duration = .seconds(5)
+    ) {
         self.throttleThreshold = throttleThreshold
+        self.minBackoff = Swift.min(minBackoff, maxBackoff)
+        self.maxBackoff = maxBackoff
     }
 
     /// Delay execution if the rate limit is approaching the throttle threshold.
     ///
-    /// Sleeps for a backoff period if fewer than `(1 - throttleThreshold) * limit` requests remain.
+    /// Below the threshold this returns at once. Past it, requests are spaced out by a
+    /// pause running from ``minBackoff`` at the threshold to ``maxBackoff`` when nothing
+    /// remains. The spacing is global: concurrent callers queue for their turn, so a
+    /// fan-out of several requests is paced exactly like the same requests in sequence.
     public func throttleIfNeeded() async {
-        guard let limit = hourlyLimit, let remaining = hourlyRemaining else {
-            // No rate limit data yet; proceed
+        guard let limit = hourlyLimit, let remaining = hourlyRemaining,
+            let delay = Self.backoff(
+                limit: limit, remaining: remaining, threshold: throttleThreshold,
+                minBackoff: minBackoff, maxBackoff: maxBackoff)
+        else {
+            if let fraction = usageFraction {
+                logger.debug("Rate limit OK: \(Int(fraction * 100))% of the hourly budget used")
+            }
             return
         }
 
-        let usageFraction = Double(limit - remaining) / Double(limit)
-        if usageFraction >= throttleThreshold {
-            let backoffSeconds: Double = 5.0
-            logger.warning(
-                "Rate limit at \(Int(usageFraction * 100))% (\(remaining)/\(limit) remaining). Throttling for \(backoffSeconds)s.")
-            try? await Task.sleep(for: .seconds(backoffSeconds))
-        } else {
-            logger.debug("Rate limit OK: \(remaining)/\(limit) remaining (\(Int(usageFraction * 100))% used)")
-        }
+        let now = ContinuousClock.now
+        let start = max(now, nextThrottledSlot ?? now)
+        let fireAt = start + delay
+        nextThrottledSlot = fireAt
+        logger.warning(
+            "Rate limit nearly spent (\(remaining)/\(limit) remaining). Pausing \(now.duration(to: fireAt)) before the next request."
+        )
+        try? await Task.sleep(until: fireAt, clock: .continuous)
+    }
+
+    /// The pause before a request at this position, or `nil` when usage is below the
+    /// threshold. Grows linearly from `minBackoff` at the threshold to `maxBackoff` with
+    /// nothing remaining.
+    static func backoff(
+        limit: Int,
+        remaining: Int,
+        threshold: Double,
+        minBackoff: Duration,
+        maxBackoff: Duration
+    ) -> Duration? {
+        guard limit > 0 else { return nil }
+        let used = Double(limit - remaining) / Double(limit)
+        guard used >= threshold else { return nil }
+        let band = Swift.max(1 - threshold, .ulpOfOne)
+        let depth = Swift.min(Swift.max((used - threshold) / band, 0), 1)
+        return minBackoff + (maxBackoff - minBackoff) * depth
     }
 
     /// Update rate limit state from an HTTP response's headers.

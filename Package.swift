@@ -15,7 +15,7 @@ let package = Package(
         .executable(name: "app-store-connect-mcp", targets: ["AppStoreConnectMCPServer"]),
     ],
     dependencies: [
-        // JWTKit 5.7.1 requires Crypto 4.x even though swift-certificates now accepts 5.x.
+        // JWTKit and swift-certificates both accept Crypto 5.x; keep this major in step with them.
         .package(url: "https://github.com/apple/swift-crypto", from: "5.1.1"),
         .package(url: "https://github.com/vapor/jwt-kit", .upToNextMajor(from: "5.7.1")),
         .package(url: "https://github.com/apple/swift-log", from: "1.15.1"),
