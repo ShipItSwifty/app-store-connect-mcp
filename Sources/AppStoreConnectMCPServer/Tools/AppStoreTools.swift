@@ -329,9 +329,11 @@ enum AppStoreTools {
                 Escape hatch: perform an arbitrary authenticated GET against the App Store \
                 Connect API (https://developer.apple.com/documentation/appstoreconnectapi) \
                 and return Apple's JSON verbatim. Use this for resources the typed \
-                tools above don't cover — appInfos, appPrices, inAppPurchases, subscriptions, \
-                appEvents, users, devices, certificates, profiles, salesReports metadata, and \
-                anything Apple adds later. Give a path such as \
+                tools don't cover — appPrices, appEvents, users, devices, salesReports \
+                metadata, and anything Apple adds later. App infos, in-app purchases, \
+                subscriptions, and certificates/profiles have typed tools \
+                (asc_list_app_infos, asc_list_in_app_purchases, asc_list_subscriptions, \
+                asc_signing_assets) that page and normalize for you. Give a path such as \
                 '/v1/apps/123/appInfos?include=primaryCategory&limit=5'; the query string may \
                 be inline or supplied via the 'query' argument as a JSON object. Only GET is \
                 possible — this tool cannot modify anything. Returns one page: follow \

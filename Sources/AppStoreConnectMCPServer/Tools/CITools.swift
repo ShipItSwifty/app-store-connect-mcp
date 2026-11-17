@@ -48,7 +48,13 @@ enum CITools {
 
         ToolSpec(
             name: "asc_ci_list_workflows",
-            description: "List the Xcode Cloud workflows for a product.",
+            description: """
+                List the Xcode Cloud workflows for a product: id, name, description, whether \
+                it is enabled or locked for editing, last-modified date, and its actions \
+                (scheme, platform, action type, test configuration). Returns up to 200 \
+                workflows. Get product ids from asc_ci_list_products; for test-plan routing \
+                alone, asc_ci_list_test_plans is the flatter view.
+                """,
             arguments: [
                 .string("product_id", "Xcode Cloud product id (from asc_ci_list_products).", required: true)
             ]
@@ -58,7 +64,15 @@ enum CITools {
 
         ToolSpec(
             name: "asc_ci_list_build_runs",
-            description: "List recent build runs for a workflow, newest first.",
+            description: """
+                List recent build runs for a workflow, newest first (by run number): \
+                execution progress, completion status (SUCCEEDED / FAILED / ERRORED / \
+                CANCELED / SKIPPED / INVALID), start reason, created/started/finished dates, \
+                source and destination commits, and whether it is a pull-request build. \
+                Runs carry no issues or logs — pass a run id to asc_ci_get_build_run or \
+                asc_ci_failure_report for those. To find the latest red build across an \
+                app, asc_ci_latest_failure is one call instead of this plus a scan.
+                """,
             arguments: [
                 .string("workflow_id", "Xcode Cloud workflow id (from asc_ci_list_workflows).", required: true),
                 .integer("limit", "Max build runs to return (default 20)."),
@@ -95,7 +109,15 @@ enum CITools {
 
         ToolSpec(
             name: "asc_ci_get_build_run",
-            description: "Fetch a build run plus its actions (build/analyze/test/archive steps) with issue counts.",
+            description: """
+                Fetch one build run plus its actions (build / analyze / test / archive \
+                steps). Each action has its type, execution progress, completion status, \
+                start and finish dates, and issue counts (errors, warnings, analyzer \
+                warnings, test failures) — counts only, not the issues themselves. Use the \
+                action ids with asc_ci_get_issues, asc_ci_get_test_results, or \
+                asc_ci_get_artifacts; for a failed run, asc_ci_failure_report gathers all of \
+                that in one call.
+                """,
             arguments: [
                 .string("build_run_id", "Xcode Cloud build run id.", required: true)
             ]
@@ -109,7 +131,13 @@ enum CITools {
 
         ToolSpec(
             name: "asc_ci_get_issues",
-            description: "List the issues (errors, warnings, analyzer findings) for one build action.",
+            description: """
+                List the issues Xcode Cloud recorded for one build action: errors, warnings, \
+                and analyzer findings, each with its type, category, message, and source \
+                file path and line number when Apple supplies them. Returns up to 200 \
+                issues. These are Apple's structured issues, not parsed log text — for log \
+                findings use asc_ci_failure_report_with_logs or asc_ci_analyze_log.
+                """,
             arguments: [
                 .string("build_action_id", "Xcode Cloud build action id (from asc_ci_get_build_run).", required: true)
             ]
@@ -119,7 +147,12 @@ enum CITools {
 
         ToolSpec(
             name: "asc_ci_get_test_results",
-            description: "List the test results for one build action.",
+            description: """
+                List the test results for one test action: class and test name, status, \
+                failure message, source file and line, and per-destination results (device, \
+                OS version, status, duration). Includes passing tests as well as failures, \
+                up to 200 results. Get action ids from asc_ci_get_build_run.
+                """,
             arguments: [
                 .string("build_action_id", "Xcode Cloud build action id.", required: true)
             ]
@@ -129,8 +162,13 @@ enum CITools {
 
         ToolSpec(
             name: "asc_ci_get_artifacts",
-            description:
-                "List downloadable artifacts (log bundle, xcresult, products) for one build action, with signed URLs.",
+            description: """
+                List the downloadable artifacts for one build action (log bundle, xcresult, \
+                build products): file type, file name, size, and a signed download URL. \
+                Lists only; nothing is downloaded. Pass a text-log URL to \
+                asc_ci_analyze_log to parse it; xcresult and zipped bundles cannot be \
+                parsed by this server.
+                """,
             arguments: [
                 .string("build_action_id", "Xcode Cloud build action id.", required: true)
             ]
